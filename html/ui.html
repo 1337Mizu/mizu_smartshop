@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mizu SmartShop</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div id="app" style="display: none;">
+        <div class="shop-container">
+            <header class="shop-header">
+                <h1 id="shop-title">SmartShop</h1>
+                <button id="close-btn" class="close-btn"><i class="fas fa-times"></i></button>
+            </header>
+            <main class="shop-content-split">
+                <!-- Left Pane: Items -->
+                <div class="shop-left">
+                    <div class="shop-controls">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="search-input" placeholder="Search items...">
+                            <button id="search-clear" class="search-clear" style="display:none;">&times;</button>
+                        </div>
+                    </div>
+                    <div id="category-tabs" class="category-tabs" style="display: none;"></div>
+                    <div id="items-grid" class="items-grid">
+                        <!-- Items injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Right Pane: Cart -->
+                <div class="shop-right">
+                    <h2 id="cart-title">Shopping Cart</h2>
+                    <div id="cart-items" class="cart-items">
+                        <!-- Cart Items injected via JS -->
+                        <div class="empty-cart-msg" id="empty-cart-msg">Your cart is empty</div>
+                    </div>
+                    <div class="cart-footer">
+                        <div class="cart-total" id="cart-total">Total: $0</div>
+                        <button class="checkout-btn" id="checkout-btn">Checkout</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Payment Modal -->
+        <div id="payment-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-container">
+                <header class="modal-header">
+                    <h2 id="modal-title">Select Payment Method</h2>
+                    <button id="close-modal-btn" class="close-btn"><i class="fas fa-times"></i></button>
+                </header>
+                <div class="modal-content">
+                    <button class="pay-btn cash-btn" id="pay-cash-btn">
+                        <i class="fas fa-money-bill-wave"></i> <span id="text-cash">Cash</span>
+                    </button>
+                    <button class="pay-btn card-btn" id="pay-card-btn">
+                        <i class="fas fa-credit-card"></i> <span id="text-card">Card</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="admin-app" style="display: none;">
+        <div class="shop-container admin-container">
+            <header class="shop-header">
+                <div class="admin-header-left">
+                    <button id="admin-back-btn" class="admin-back-btn" style="display: none;"><i class="fas fa-arrow-left"></i></button>
+                    <h1 id="admin-title"><i class="fas fa-cog"></i> SmartShop Admin</h1>
+                </div>
+                <button id="admin-close-btn" class="close-btn"><i class="fas fa-times"></i></button>
+            </header>
+            <main class="shop-content-split" id="admin-content">
+                <!-- Screen 1: Shop List (injected via JS) -->
+                <div id="admin-shop-list" class="shop-left admin-full">
+                    <div class="shop-controls">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="admin-search" class="admin-search-input" placeholder="Search shops...">
+                            <button id="admin-search-clear" class="search-clear" style="display:none;">&times;</button>
+                        </div>
+                    </div>
+                    <div id="admin-shops-grid" class="admin-shops-grid">
+                        <!-- Shop cards injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Screen 2: Shop Edit (hidden by default) -->
+                <div id="admin-shop-edit" style="display: none;">
+                    <div class="shop-left admin-edit-left">
+                        <h3 class="admin-section-title">Shop Settings</h3>
+                        <div class="admin-form">
+                            <label class="admin-label">Shop ID</label>
+                            <input type="text" id="admin-shop-id" class="admin-input" readonly>
+
+                            <label class="admin-label">Name</label>
+                            <input type="text" id="admin-shop-name" class="admin-input" placeholder="Shop Name">
+
+                            <label class="admin-label">Job Restriction <span class="admin-hint">(select jobs or leave empty for public)</span></label>
+                            <div class="admin-job-select" id="admin-job-select">
+                                <div class="admin-job-toggle" id="admin-job-toggle">
+                                    <span class="admin-job-placeholder" id="admin-job-placeholder">Public (no restriction)</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                                <div class="admin-job-dropdown" id="admin-job-dropdown" style="display:none;">
+                                    <input type="text" class="admin-job-search" id="admin-job-search" placeholder="Search jobs...">
+                                    <div class="admin-job-list" id="admin-job-list"></div>
+                                </div>
+                            </div>
+
+                            <div class="admin-row">
+                                <div class="admin-col">
+                                    <label class="admin-label">Blip Name <span class="admin-hint">(empty = no blip)</span></label>
+                                    <input type="text" id="admin-blip-name" class="admin-input" placeholder="Blip label">
+                                </div>
+                                <div class="admin-col">
+                                    <label class="admin-label">Blip Sprite</label>
+                                    <input type="number" id="admin-blip-sprite" class="admin-input" value="52">
+                                </div>
+                                <div class="admin-col">
+                                    <label class="admin-label">Blip Color</label>
+                                    <input type="number" id="admin-blip-color" class="admin-input" value="2">
+                                </div>
+                            </div>
+
+                            <div class="admin-checkbox-row">
+                                <label><input type="checkbox" id="admin-blip-minimap"> Minimap Only</label>
+                            </div>
+
+                            <div class="admin-row">
+                                <div class="admin-col">
+                                    <label class="admin-label">Marker Type <span class="admin-hint">(0 = disabled)</span></label>
+                                    <input type="number" id="admin-marker-type" class="admin-input" value="0">
+                                </div>
+                            </div>
+
+                            <label class="admin-label">Coordinates</label>
+                            <div class="admin-row">
+                                <div class="admin-col"><input type="number" step="0.01" id="admin-coord-x" class="admin-input" placeholder="X"></div>
+                                <div class="admin-col"><input type="number" step="0.01" id="admin-coord-y" class="admin-input" placeholder="Y"></div>
+                                <div class="admin-col"><input type="number" step="0.01" id="admin-coord-z" class="admin-input" placeholder="Z"></div>
+                                <div class="admin-col admin-col-btn"><button id="admin-use-pos-btn" class="admin-btn-small" title="Use current position"><i class="fas fa-crosshairs"></i></button></div>
+                            </div>
+
+                            <div class="admin-actions">
+                                <button id="admin-save-btn" class="admin-btn admin-btn-primary"><i class="fas fa-save"></i> Save</button>
+                                <button id="admin-reset-btn" class="admin-btn admin-btn-warning" style="display:none;"><i class="fas fa-undo"></i> Reset to Config</button>
+                                <button id="admin-delete-btn" class="admin-btn admin-btn-danger" style="display:none;"><i class="fas fa-trash"></i> Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="shop-right admin-edit-right">
+                        <h3 class="admin-section-title">Items <span id="admin-item-count" class="admin-badge">0</span></h3>
+                        <div id="admin-items-list" class="admin-items-list">
+                            <!-- Item rows injected via JS -->
+                        </div>
+                        <button id="admin-add-item-btn" class="admin-btn admin-btn-primary admin-btn-full"><i class="fas fa-plus"></i> Add Item</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Item Edit Modal -->
+        <div id="item-edit-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-container modal-wide">
+                <header class="modal-header">
+                    <h2 id="item-modal-title">Edit Item</h2>
+                    <button id="item-modal-close" class="close-btn"><i class="fas fa-times"></i></button>
+                </header>
+                <div class="modal-content modal-form">
+                    <div class="admin-row">
+                        <div class="admin-col">
+                            <label class="admin-label">Item Name (internal)</label>
+                            <input type="text" id="item-edit-name" class="admin-input" placeholder="weapon_pistol">
+                        </div>
+                        <div class="admin-col">
+                            <label class="admin-label">Label (display)</label>
+                            <input type="text" id="item-edit-label" class="admin-input" placeholder="Combat Pistol">
+                        </div>
+                    </div>
+                    <div class="admin-row">
+                        <div class="admin-col">
+                            <label class="admin-label">Price</label>
+                            <input type="number" id="item-edit-price" class="admin-input" value="0" min="0">
+                        </div>
+                        <div class="admin-col">
+                            <label class="admin-label">Max Qty</label>
+                            <input type="number" id="item-edit-maxqty" class="admin-input" value="999" min="1">
+                        </div>
+                    </div>
+                    <div class="admin-row">
+                        <div class="admin-col">
+                            <label class="admin-label">Grade <span class="admin-hint">(0 = no restriction)</span></label>
+                            <input type="number" id="item-edit-grade" class="admin-input" value="0" min="0">
+                        </div>
+                        <div class="admin-col">
+                            <label class="admin-label">Category <span class="admin-hint">(optional)</span></label>
+                            <input type="text" id="item-edit-category" class="admin-input" placeholder="Food & Snacks">
+                        </div>
+                    </div>
+                    <div class="admin-row">
+                        <div class="admin-col">
+                            <label class="admin-label">Image</label>
+                            <div class="admin-image-field">
+                                <input type="text" id="item-edit-image" class="admin-input" placeholder="pistol.png">
+                                <button id="item-image-picker-btn" class="admin-btn-small" title="Browse images"><i class="fas fa-images"></i></button>
+                            </div>
+                            <div id="item-image-preview" class="admin-image-preview"></div>
+                        </div>
+                    </div>
+                    <div class="admin-actions">
+                        <button id="item-edit-save" class="admin-btn admin-btn-primary"><i class="fas fa-check"></i> Save Item</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Picker Modal -->
+        <div id="image-picker-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-container modal-large">
+                <header class="modal-header">
+                    <h2>Select Image</h2>
+                    <button id="image-picker-close" class="close-btn"><i class="fas fa-times"></i></button>
+                </header>
+                <div class="image-picker-search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="image-picker-search" placeholder="Filter images...">
+                </div>
+                <div class="modal-content" style="flex-direction: column; padding-top: 0;">
+                    <div id="image-picker-grid" class="image-picker-grid">
+                        <!-- Image thumbnails injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Shop Modal -->
+        <div id="new-shop-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-container">
+                <header class="modal-header">
+                    <h2>Create New Shop</h2>
+                    <button id="new-shop-modal-close" class="close-btn"><i class="fas fa-times"></i></button>
+                </header>
+                <div class="modal-content modal-form">
+                    <label class="admin-label">Shop ID <span class="admin-hint">(unique, no spaces)</span></label>
+                    <input type="text" id="new-shop-id" class="admin-input" placeholder="my_new_shop">
+                    <div class="admin-actions" style="margin-top: 16px;">
+                        <button id="new-shop-create-btn" class="admin-btn admin-btn-primary"><i class="fas fa-plus"></i> Create at my position</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+</body>
+
+</html>
