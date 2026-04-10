@@ -2,6 +2,7 @@ local Framework = 'none'
 local ESX, QBCore = nil, nil
 local PlayerJob = { name = 'unemployed', grade = 0 }
 local ActiveBlips = {}
+local ActivePeds = {}
 local ShopsSynced = false
 
 -- Safely convert any coord value (table, array, or vector3) to a proper vector3
@@ -39,6 +40,32 @@ function HasShopAccess(shop)
     return false
 end
 
+local function GetQBTargetJob(shop)
+    if not shop.JobRestriction then return nil end
+    local jobs = {}
+    if type(shop.JobRestriction) == 'table' then
+        for _, jobName in ipairs(shop.JobRestriction) do
+            jobs[jobName] = 0
+        end
+    else
+        jobs[shop.JobRestriction] = 0
+    end
+    return jobs
+end
+
+local function GetOxTargetGroups(shop)
+    if not shop.JobRestriction then return nil end
+    local groups = {}
+    if type(shop.JobRestriction) == 'table' then
+        for _, jobName in ipairs(shop.JobRestriction) do
+            groups[jobName] = 0
+        end
+    else
+        groups[shop.JobRestriction] = 0
+    end
+    return groups
+end
+
 function RefreshBlips()
     for shopId, shop in pairs(Config.Shops) do
         if shop.Blipname then
@@ -71,6 +98,8 @@ function RefreshBlips()
             end
         end
     end
+    -- Also refresh peds when job changes
+    if RefreshShopPeds then RefreshShopPeds() end
 end
 
 -- Receive saved shops (dynamic + overrides) from server on connect
@@ -81,6 +110,7 @@ RegisterNetEvent('mizu_smartshop:client:receiveSavedShops', function(shops)
     end
     ShopsSynced = true
     RefreshBlips()
+    RefreshShopPeds()
 end)
 
 local function SyncAndRefresh()
@@ -153,6 +183,107 @@ CreateThread(function()
     end
 end)
 
+-- Ped Management
+function SpawnShopPed(shopId, shop)
+    DeleteShopPed(shopId)
+
+    if not shop.PedModel or shop.PedModel == '' then return end
+    if not HasShopAccess(shop) then return end
+
+    local modelHash = GetHashKey(shop.PedModel)
+    RequestModel(modelHash)
+    local timeout = 0
+    while not HasModelLoaded(modelHash) and timeout < 50 do
+        Wait(100)
+        timeout = timeout + 1
+    end
+    if not HasModelLoaded(modelHash) then
+        print('^1[mizu_smartshop] Failed to load ped model: ' .. shop.PedModel .. '^0')
+        return
+    end
+
+    local coords = shop.coords
+    local ped = CreatePed(4, modelHash, coords.x, coords.y, coords.z, shop.PedHeading or 0.0, false, true)
+    SetModelAsNoLongerNeeded(modelHash)
+
+    SetEntityInvincible(ped, true)
+    SetBlockingOfNonTemporaryEvents(ped, true)
+    SetPedFleeAttributes(ped, 0, false)
+    SetPedCombatAttributes(ped, 46, true)
+    SetPedCanRagdollFromPlayerImpact(ped, false)
+    SetPedCanRagdoll(ped, false)
+    SetEntityAsMissionEntity(ped, true, true)
+    SetPedDiesWhenInjured(ped, false)
+    SetPedCanPlayAmbientAnims(ped, true)
+    FreezeEntityPosition(ped, true)
+
+    if shop.PedScenario and shop.PedScenario ~= '' then
+        TaskStartScenarioInPlace(ped, shop.PedScenario, 0, true)
+    end
+
+    ActivePeds[shopId] = ped
+
+    -- Set up target interaction
+    if Config.TargetSystem == 'qb-target' and GetResourceState('qb-target') == 'started' then
+        pcall(function()
+            exports['qb-target']:AddTargetEntity(ped, {
+                options = {
+                    {
+                        type = "client",
+                        action = function()
+                            OpenShop(shopId)
+                        end,
+                        icon = "fas fa-shopping-cart",
+                        label = _U('target_open_shop'),
+                        job = GetQBTargetJob(shop),
+                    },
+                },
+                distance = 2.5
+            })
+        end)
+    elseif Config.TargetSystem == 'ox-target' and GetResourceState('ox_target') == 'started' then
+        pcall(function()
+            exports.ox_target:addLocalEntity(ped, {
+                {
+                    name = shopId .. '_smartshop_ped',
+                    icon = 'fas fa-shopping-cart',
+                    label = _U('target_open_shop'),
+                    groups = GetOxTargetGroups(shop),
+                    onSelect = function()
+                        OpenShop(shopId)
+                    end
+                }
+            })
+        end)
+    end
+end
+
+function DeleteShopPed(shopId)
+    if ActivePeds[shopId] then
+        if DoesEntityExist(ActivePeds[shopId]) then
+            DeleteEntity(ActivePeds[shopId])
+        end
+        ActivePeds[shopId] = nil
+    end
+end
+
+function RefreshShopPeds()
+    -- Remove all active peds
+    for shopId, ped in pairs(ActivePeds) do
+        if DoesEntityExist(ped) then
+            DeleteEntity(ped)
+        end
+    end
+    ActivePeds = {}
+
+    -- Respawn peds where PedModel is set
+    for shopId, shop in pairs(Config.Shops) do
+        if shop.PedModel and shop.PedModel ~= '' then
+            SpawnShopPed(shopId, shop)
+        end
+    end
+end
+
 local CurrentShop = nil
 
 RegisterNUICallback('closeUI', function(data, cb)
@@ -209,28 +340,53 @@ if Config.TargetSystem == 'none' then
 
                 for shopId, shop in pairs(Config.Shops) do
                     if HasShopAccess(shop) then
-                        local dist = #(pos - shop.coords)
+                        -- Ped shops use direct interaction instead of marker
+                        local hasPed = shop.PedModel and shop.PedModel ~= ''
 
-                        if dist < 10.0 then
-                            sleep = 0
-                            if shop.MarkerType then
-                                local mPos = shop.coords
-                                local mSize = shop.MarkerSize or vector3(0.3, 0.2, 0.15)
-                                local r = shop.MarkerColor and shop.MarkerColor.r or 30
-                                local g = shop.MarkerColor and shop.MarkerColor.g or 150
-                                local b = shop.MarkerColor and shop.MarkerColor.b or 30
-                                local a = shop.MarkerColor and shop.MarkerColor.a or 100
-                                DrawMarker(shop.MarkerType, mPos.x, mPos.y, mPos.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, mSize.x, mSize.y, mSize.z, r, g, b, a, false, true, 2, false, nil, nil, false)
-                            end
-                            
-                            if dist < 1.5 then
-                                if GetResourceState('mizu_interface') == 'started' then
-                                    exports['mizu_interface']:TextUI('E', _U('open_shop_prompt') or 'Shop öffnen')
-                                else
-                                    DrawText3D(shop.coords.x, shop.coords.y, shop.coords.z + 0.3, _U('open_shop_prompt'))
+                        if hasPed then
+                            -- Distance check to ped entity
+                            local pedEntity = ActivePeds[shopId]
+                            if pedEntity and DoesEntityExist(pedEntity) then
+                                local pedCoords = GetEntityCoords(pedEntity)
+                                local dist = #(pos - pedCoords)
+                                if dist < 3.0 then
+                                    sleep = 0
+                                    if dist < 1.8 then
+                                        if GetResourceState('mizu_interface') == 'started' then
+                                            exports['mizu_interface']:TextUI('E', _U('open_shop_prompt') or 'Shop öffnen')
+                                        else
+                                            DrawText3D(pedCoords.x, pedCoords.y, pedCoords.z + 1.0, _U('open_shop_prompt'))
+                                        end
+                                        if IsControlJustReleased(0, 38) then -- E key
+                                            OpenShop(shopId)
+                                        end
+                                    end
                                 end
-                                if IsControlJustReleased(0, 38) then -- E key
-                                    OpenShop(shopId)
+                            end
+                        else
+                            local dist = #(pos - shop.coords)
+
+                            if dist < 10.0 then
+                                sleep = 0
+                                if shop.MarkerType then
+                                    local mPos = shop.coords
+                                    local mSize = shop.MarkerSize or vector3(0.3, 0.2, 0.15)
+                                    local r = shop.MarkerColor and shop.MarkerColor.r or 30
+                                    local g = shop.MarkerColor and shop.MarkerColor.g or 150
+                                    local b = shop.MarkerColor and shop.MarkerColor.b or 30
+                                    local a = shop.MarkerColor and shop.MarkerColor.a or 100
+                                    DrawMarker(shop.MarkerType, mPos.x, mPos.y, mPos.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, mSize.x, mSize.y, mSize.z, r, g, b, a, false, true, 2, false, nil, nil, false)
+                                end
+                                
+                                if dist < 1.5 then
+                                    if GetResourceState('mizu_interface') == 'started' then
+                                        exports['mizu_interface']:TextUI('E', _U('open_shop_prompt') or 'Shop öffnen')
+                                    else
+                                        DrawText3D(shop.coords.x, shop.coords.y, shop.coords.z + 0.3, _U('open_shop_prompt'))
+                                    end
+                                    if IsControlJustReleased(0, 38) then -- E key
+                                        OpenShop(shopId)
+                                    end
                                 end
                             end
                         end
@@ -254,8 +410,10 @@ CreateThread(function()
             return
         end
         for shopId, shop in pairs(Config.Shops) do
-            pcall(function()
-                exports['qb-target']:AddBoxZone(shopId .. "_smartshop", shop.coords, 1.5, 1.5, {
+            -- Ped shops use entity target, skip box zone
+            if not shop.PedModel or shop.PedModel == '' then
+                pcall(function()
+                    exports['qb-target']:AddBoxZone(shopId .. "_smartshop", shop.coords, 1.5, 1.5, {
                     name = shopId .. "_smartshop",
                     heading = 0,
                     debugPoly = false,
@@ -270,12 +428,13 @@ CreateThread(function()
                             end,
                             icon = "fas fa-shopping-cart",
                             label = _U('target_open_shop'),
-                            job = shop.JobRestriction,
+                            job = GetQBTargetJob(shop),
                         },
                     },
                     distance = 2.0
                 })
             end)
+            end
         end
     elseif Config.TargetSystem == 'ox-target' then
         if GetResourceState('ox_target') ~= 'started' then
@@ -283,6 +442,8 @@ CreateThread(function()
             return
         end
         for shopId, shop in pairs(Config.Shops) do
+            -- Ped shops use entity target, skip sphere zone
+            if not shop.PedModel or shop.PedModel == '' then
             pcall(function()
                 exports.ox_target:addSphereZone({
                     coords = shop.coords,
@@ -293,7 +454,7 @@ CreateThread(function()
                             name = shopId .. '_smartshop',
                             icon = 'fas fa-shopping-cart',
                             label = _U('target_open_shop'),
-                            groups = shop.JobRestriction,
+                            groups = GetOxTargetGroups(shop),
                             onSelect = function()
                                 OpenShop(shopId)
                             end
@@ -301,6 +462,7 @@ CreateThread(function()
                     }
                 })
             end)
+            end
         end
     end
 end)
@@ -348,6 +510,13 @@ RegisterNetEvent('mizu_smartshop:client:registerShop', function(shopId, shop)
     Config.Shops[shopId] = shop
     RefreshBlips()
 
+    -- Ped spawn/cleanup
+    DeleteShopPed(shopId)
+    if shop.PedModel and shop.PedModel ~= '' then
+        SpawnShopPed(shopId, shop)
+        return -- ped has its own target
+    end
+
     -- Remove old target zone before re-registering
     if Config.TargetSystem == 'qb-target' and GetResourceState('qb-target') == 'started' then
         pcall(function()
@@ -369,7 +538,7 @@ RegisterNetEvent('mizu_smartshop:client:registerShop', function(shopId, shop)
                         end,
                         icon = "fas fa-shopping-cart",
                         label = _U('target_open_shop'),
-                        job = shop.JobRestriction,
+                        job = GetQBTargetJob(shop),
                     },
                 },
                 distance = 2.0
@@ -389,7 +558,7 @@ RegisterNetEvent('mizu_smartshop:client:registerShop', function(shopId, shop)
                         name = shopId .. '_smartshop',
                         icon = 'fas fa-shopping-cart',
                         label = _U('target_open_shop'),
-                        groups = shop.JobRestriction,
+                        groups = GetOxTargetGroups(shop),
                         onSelect = function()
                             OpenShop(shopId)
                         end
@@ -405,12 +574,13 @@ RegisterNetEvent('mizu_smartshop:client:printF8', function(msg)
     print(msg)
 end)
 
--- Unregister a deleted shop (remove blip, clear from Config)
+-- Unregister a deleted shop (remove blip, ped & config entry)
 RegisterNetEvent('mizu_smartshop:client:unregisterShop', function(shopId)
     if ActiveBlips[shopId] then
         RemoveBlip(ActiveBlips[shopId])
         ActiveBlips[shopId] = nil
     end
+    DeleteShopPed(shopId)
     Config.Shops[shopId] = nil
 end)
 
@@ -473,6 +643,12 @@ RegisterNUICallback('adminGetPlayerCoords', function(data, cb)
     cb({ x = coords.x, y = coords.y, z = coords.z })
 end)
 
+RegisterNUICallback('adminGetPlayerHeading', function(data, cb)
+    local ped = PlayerPedId()
+    local heading = GetEntityHeading(ped)
+    cb({ heading = heading })
+end)
+
 RegisterNUICallback('adminGotoShop', function(data, cb)
     local ped = PlayerPedId()
     SetEntityCoords(ped, data.x + 0.0, data.y + 0.0, data.z + 0.0, false, false, false, true)
@@ -481,6 +657,17 @@ end)
 
 RegisterNetEvent('mizu_smartshop:client:openAdminPanel', function()
     TriggerServerEvent('mizu_smartshop:server:requestAdminData')
+end)
+
+-- Clean up peds when resource stops
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    for shopId, ped in pairs(ActivePeds) do
+        if DoesEntityExist(ped) then
+            DeleteEntity(ped)
+        end
+    end
+    ActivePeds = {}
 end)
 
 

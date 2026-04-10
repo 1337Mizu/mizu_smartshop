@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop
+# 🛒 Mizu SmartShop v1.1.0
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -60,6 +60,26 @@
 - Optional markers & minimap-only mode
 - qb-target / ox_target support
 - Marker fallback for standalone
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🧍 Shop Peds (v1.1.0)
+- Place an NPC at any shop via config or admin panel
+- Ped replaces the marker — invincible, frozen, passive
+- Optional idle animations via `PedScenario`
+- Configurable heading (or "use my direction" in admin)
+
+</td>
+<td width="50%">
+
+### 🧍 Ped Admin Tools
+- In-game ped model picker with search (~500 models)
+- Toggle peds on/off per shop in the admin panel
+- Works with qb-target, ox_target & E-key fallback
+- Job-restricted peds only visible to authorized players
 
 </td>
 </tr>

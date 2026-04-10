@@ -19,6 +19,9 @@ Config.Shops = {
         MarkerType = 1, -- remove to disable marker (only used when TargetSystem = 'none')
         MarkerSize = vector3(1.0, 1.0, 0.5),
         MarkerColor = { r = 0, g = 255, b = 255, a = 100 },
+        PedModel = 'mp_m_shopkeep_01', -- spawns a ped instead of marker
+        PedHeading = 146.37,               -- facing direction (0-360)
+        PedScenario = '',               -- idle animation, e.g. 'WORLD_HUMAN_STAND_IMPATIENT'
         items = {
             { name = 'water_bottle', label = 'Juice', price = 5, image = 'berriesjuice.png', maxQty = 999, category = 'Food & Snacks' },
             { name = 'Burger', label = 'Burger', price = 4, image = 'burger.png', maxQty = 50, category = 'Food & Snacks' },

@@ -1342,8 +1342,8 @@ body {
 .image-picker-search-bar {
     position: relative;
     padding: 0 30px;
-    margin-top: 6px;
-    margin-bottom: 18px;
+    margin-top: 14px;
+    margin-bottom: 14px;
 }
 
 .image-picker-search-bar i {
@@ -1416,4 +1416,113 @@ body {
     text-align: center;
     word-break: break-all;
     line-height: 1.2;
+}
+
+/* Admin Toggle Section */
+.admin-toggle-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-toggle-section .admin-section-title {
+    margin: 0;
+    flex: 1;
+}
+
+.admin-toggle {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.admin-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.admin-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 22px;
+    transition: background 0.2s;
+}
+
+.admin-toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.admin-toggle input:checked + .admin-toggle-slider {
+    background: var(--primary);
+}
+
+.admin-toggle input:checked + .admin-toggle-slider::before {
+    transform: translateX(18px);
+}
+
+/* Ped Picker */
+#ped-picker-search {
+    width: 100%;
+    padding: 12px 14px 12px 36px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+#ped-picker-search:focus {
+    border-color: rgba(var(--primary-rgb), 0.5);
+    background: rgba(0, 0, 0, 0.4);
+}
+
+#ped-picker-search::placeholder {
+    color: var(--text-muted);
+}
+
+.ped-picker-list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 2px 0 4px;
+}
+
+.ped-picker-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 10px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-family: 'Inter', monospace;
+    text-align: center;
+    word-break: break-all;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ped-picker-item:hover {
+    border-color: var(--primary);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+    transform: translateY(-2px);
 }

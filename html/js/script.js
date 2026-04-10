@@ -547,6 +547,14 @@ function openShopEditor(shopId) {
     document.getElementById('admin-blip-minimap').checked = shop.BlipMinimapOnly || false;
     document.getElementById('admin-marker-type').value = shop.MarkerType || 0;
 
+// --- Ped fields --- 
+    const hasPed = !!(shop.PedModel && shop.PedModel !== '');
+    document.getElementById('admin-ped-enabled').checked = hasPed;
+    document.getElementById('admin-ped-fields').style.display = hasPed ? '' : 'none';
+    document.getElementById('admin-ped-model').value = shop.PedModel || '';
+    document.getElementById('admin-ped-heading').value = shop.PedHeading || 0;
+    document.getElementById('admin-ped-scenario').value = shop.PedScenario || '';
+
     const coords = shop.coords || [0, 0, 0];
     const cx = coords.x !== undefined ? coords.x : (coords[0] || 0);
     const cy = coords.y !== undefined ? coords.y : (coords[1] || 0);
@@ -714,6 +722,17 @@ function buildShopData() {
         data.MarkerType = markerType;
         data.MarkerSize = [1.0, 1.0, 0.5];
         data.MarkerColor = { r: 30, g: 150, b: 30, a: 100 };
+    }
+
+// --- Include ped data only when toggle is on --- 
+    if (document.getElementById('admin-ped-enabled').checked) {
+        const pedModel = document.getElementById('admin-ped-model').value.trim();
+        if (pedModel) {
+            data.PedModel = pedModel;
+            data.PedHeading = parseFloat(document.getElementById('admin-ped-heading').value) || 0;
+            const pedScenario = document.getElementById('admin-ped-scenario').value.trim();
+            if (pedScenario) data.PedScenario = pedScenario;
+        }
     }
 
     return data;
@@ -905,8 +924,10 @@ document.addEventListener('keyup', function(e) {
     const adminApp = document.getElementById('admin-app');
     if (adminApp.style.display !== 'flex') return;
 
-    // Close modals first, then back, then close admin
-    if (document.getElementById('image-picker-modal').style.display === 'flex') {
+// --- Close modals first, then back, then close admin --- 
+    if (document.getElementById('ped-picker-modal').style.display === 'flex') {
+        document.getElementById('ped-picker-modal').style.display = 'none';
+    } else if (document.getElementById('image-picker-modal').style.display === 'flex') {
         document.getElementById('image-picker-modal').style.display = 'none';
     } else if (document.getElementById('item-edit-modal').style.display === 'flex') {
         document.getElementById('item-edit-modal').style.display = 'none';
@@ -918,3 +939,61 @@ document.addEventListener('keyup', function(e) {
         closeAdmin();
     }
 });
+
+// --- Ped Picker --- 
+document.getElementById('admin-ped-enabled').addEventListener('change', function() {
+    document.getElementById('admin-ped-fields').style.display = this.checked ? '' : 'none';
+    if (!this.checked) {
+        document.getElementById('admin-ped-model').value = '';
+        document.getElementById('admin-ped-heading').value = 0;
+        document.getElementById('admin-ped-scenario').value = '';
+    }
+});
+
+document.getElementById('admin-use-heading-btn').addEventListener('click', function() {
+    fetch('https://mizu_smartshop/adminGetPlayerHeading', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({})
+    }).then(r => r.json()).then(data => {
+        document.getElementById('admin-ped-heading').value = data.heading.toFixed(1);
+    });
+});
+
+document.getElementById('admin-ped-picker-btn').addEventListener('click', function() {
+    document.getElementById('ped-picker-search').value = '';
+    renderPedPicker(window.PED_MODELS || []);
+    document.getElementById('ped-picker-modal').style.display = 'flex';
+    document.getElementById('ped-picker-search').focus();
+});
+
+document.getElementById('ped-picker-close').addEventListener('click', function() {
+    document.getElementById('ped-picker-modal').style.display = 'none';
+});
+
+document.getElementById('ped-picker-search').addEventListener('input', function() {
+    const term = this.value.toLowerCase();
+    const filtered = (window.PED_MODELS || []).filter(m => m.toLowerCase().includes(term));
+    renderPedPicker(filtered);
+});
+
+function renderPedPicker(models) {
+    const list = document.getElementById('ped-picker-list');
+    list.innerHTML = '';
+
+    if (models.length === 0) {
+        list.innerHTML = '<div class="empty-cart-msg">No ped models found</div>';
+        return;
+    }
+
+    models.forEach(model => {
+        const row = document.createElement('div');
+        row.className = 'ped-picker-item';
+        row.textContent = model;
+        row.addEventListener('click', function() {
+            document.getElementById('admin-ped-model').value = model;
+            document.getElementById('ped-picker-modal').style.display = 'none';
+        });
+        list.appendChild(row);
+    });
+}
