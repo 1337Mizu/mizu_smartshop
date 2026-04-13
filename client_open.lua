@@ -590,7 +590,7 @@ end)
 
 local AdminOpen = false
 
-RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, images, jobs)
+RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, images, jobs, items)
     AdminOpen = true
     SetNuiFocus(true, true)
     SendNUIMessage({
@@ -598,6 +598,7 @@ RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, image
         shops = shops,
         images = images or {},
         jobs = jobs or {},
+        items = items or {},
         locales = Locales[Config.Locale],
         theme = Config.Theme or 'default'
     })

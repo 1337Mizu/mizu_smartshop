@@ -344,6 +344,7 @@ window.handleImageFallback = function(imgElement, imageName) {
 let adminShops = {};
 let adminImages = [];
 let adminJobs = [];
+let adminItems = [];
 let selectedJobs = [];
 let editingShopId = null;
 let editingItemIndex = -1; // -1 = new item
@@ -357,6 +358,7 @@ window.addEventListener('message', function (event) {
         adminShops = data.shops || {};
         adminImages = data.images || [];
         adminJobs = data.jobs || [];
+        adminItems = data.items || [];
         currentLocales = data.locales || {};
 
         document.documentElement.setAttribute('data-theme', data.theme || 'default');
@@ -918,6 +920,46 @@ function renderImagePicker(images) {
     }
 }
 
+// --- Item Name Picker Modal ---
+document.getElementById('item-name-picker-btn').addEventListener('click', function() {
+    document.getElementById('item-picker-search').value = '';
+    renderItemPicker(adminItems);
+    document.getElementById('item-picker-modal').style.display = 'flex';
+    document.getElementById('item-picker-search').focus();
+});
+
+document.getElementById('item-picker-close').addEventListener('click', function() {
+    document.getElementById('item-picker-modal').style.display = 'none';
+});
+
+document.getElementById('item-picker-search').addEventListener('input', function() {
+    const term = this.value.toLowerCase();
+    const filtered = adminItems.filter(i => i.name.toLowerCase().includes(term) || i.label.toLowerCase().includes(term));
+    renderItemPicker(filtered);
+});
+
+function renderItemPicker(items) {
+    const list = document.getElementById('item-picker-list');
+    list.innerHTML = '';
+
+    if (items.length === 0) {
+        list.innerHTML = '<div class="empty-cart-msg">No items found</div>';
+        return;
+    }
+
+    items.forEach(function(item) {
+        const row = document.createElement('div');
+        row.className = 'ped-picker-item item-picker-item';
+        row.innerHTML = '<div class="item-picker-label">' + item.label + '</div><div class="item-picker-name">' + item.name + '</div>';
+        row.addEventListener('click', function() {
+            document.getElementById('item-edit-name').value = item.name;
+            document.getElementById('item-edit-label').value = item.label;
+            document.getElementById('item-picker-modal').style.display = 'none';
+        });
+        list.appendChild(row);
+    });
+}
+
 // --- Admin Escape key ---
 document.addEventListener('keyup', function(e) {
     if (e.key !== 'Escape') return;
@@ -925,7 +967,9 @@ document.addEventListener('keyup', function(e) {
     if (adminApp.style.display !== 'flex') return;
 
 // --- Close modals first, then back, then close admin --- 
-    if (document.getElementById('ped-picker-modal').style.display === 'flex') {
+    if (document.getElementById('item-picker-modal').style.display === 'flex') {
+        document.getElementById('item-picker-modal').style.display = 'none';
+    } else if (document.getElementById('ped-picker-modal').style.display === 'flex') {
         document.getElementById('ped-picker-modal').style.display = 'none';
     } else if (document.getElementById('image-picker-modal').style.display === 'flex') {
         document.getElementById('image-picker-modal').style.display = 'none';

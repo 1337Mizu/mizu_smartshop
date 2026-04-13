@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop v1.1.0
+# 🛒 Mizu SmartShop v1.2.0
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -83,6 +83,27 @@
 
 </td>
 </tr>
+<tr>
+<td colspan="2">
+
+### 📦 Item Picker (v1.2.0)
+- Browse all registered items from your framework directly in the admin panel
+- Auto-populates from QBCore Shared Items, ESX database, or QBox items
+- Search & filter by item name or label
+- Selecting an item auto-fills both internal name and display label
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+### 🔄 Version Checker (v1.2.0)
+- Automatic update check on resource start via GitHub Releases API
+- Console notification if a newer version is available with download link
+- Lightweight — single HTTP request, no performance impact
+
+</td>
+</tr>
 </table>
 
 ### 🛠️ In-Game Admin Panel
@@ -92,6 +113,7 @@
 - `/smartshopedit` — Full admin UI with shop grid, config/dynamic/override badges
 - Edit shop settings: name, coords, blip, marker, job restrictions
 - Add, edit & remove items with built-in image picker
+- Item name picker — browse all registered framework items (QBCore/ESX/QBox)
 - Searchable multi-select job dropdown (auto-populated from framework)
 - `/smartshopcreate` — Clone any shop to your current position
 - Changes sync instantly to all players & persist via `saved_shops.json`
@@ -101,6 +123,10 @@
 - Discord webhook support
 - Fivemanage integration
 - Purchase tracking with player & item details
+
+### 🔄 Auto Update Check
+- On startup, checks GitHub for the latest release
+- Prints status to server console (up to date / update available)
 
 ---
 

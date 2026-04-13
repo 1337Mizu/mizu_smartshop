@@ -210,7 +210,10 @@
                     <div class="admin-row">
                         <div class="admin-col">
                             <label class="admin-label">Item Name (internal)</label>
-                            <input type="text" id="item-edit-name" class="admin-input" placeholder="weapon_pistol">
+                            <div class="admin-image-field">
+                                <input type="text" id="item-edit-name" class="admin-input" placeholder="weapon_pistol">
+                                <button id="item-name-picker-btn" class="admin-btn-small" title="Browse items"><i class="fas fa-box-open"></i></button>
+                            </div>
                         </div>
                         <div class="admin-col">
                             <label class="admin-label">Label (display)</label>
@@ -304,6 +307,25 @@
                 <div class="modal-content" style="flex-direction: column; padding-top: 0;">
                     <div id="ped-picker-list" class="ped-picker-list">
                         <!-- Ped model entries injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Item Name Picker Modal -->
+        <div id="item-picker-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-container modal-large">
+                <header class="modal-header">
+                    <h2>Select Item</h2>
+                    <button id="item-picker-close" class="close-btn"><i class="fas fa-times"></i></button>
+                </header>
+                <div class="image-picker-search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="item-picker-search" placeholder="Filter items...">
+                </div>
+                <div class="modal-content" style="flex-direction: column; padding-top: 0;">
+                    <div id="item-picker-list" class="ped-picker-list">
+                        <!-- Item entries injected via JS -->
                     </div>
                 </div>
             </div>

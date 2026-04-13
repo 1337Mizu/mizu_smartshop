@@ -435,6 +435,32 @@ local function GetAllJobs()
     return jobs
 end
 
+local function GetAllItems()
+    local items = {}
+    if Framework == 'qbcore' then
+        local shared = QBCore.Shared.Items
+        if shared then
+            for name, data in pairs(shared) do
+                table.insert(items, { name = name, label = data.label or name })
+            end
+        end
+    elseif Framework == 'qbox' then
+        local shared = exports.qbx_core:GetItems()
+        if shared then
+            for name, data in pairs(shared) do
+                table.insert(items, { name = name, label = data.label or name })
+            end
+        end
+    elseif Framework == 'esx' then
+        local result = MySQL and MySQL.query and MySQL.query.await('SELECT name, label FROM items') or {}
+        for _, row in ipairs(result) do
+            table.insert(items, { name = row.name, label = row.label or row.name })
+        end
+    end
+    table.sort(items, function(a, b) return a.label:lower() < b.label:lower() end)
+    return items
+end
+
 local function IsAdmin(src)
     return IsPlayerAceAllowed(src, 'command.smartshopedit')
 end
@@ -467,7 +493,7 @@ RegisterNetEvent('mizu_smartshop:server:requestAdminData', function()
         s._isConfig = ConfigShopIds[id] or false
         shops[id] = s
     end
-    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllJobs())
+    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllJobs(), GetAllItems())
 end)
 
 RegisterNetEvent('mizu_smartshop:server:saveShop', function(shopId, shopData)
@@ -559,6 +585,42 @@ RegisterNetEvent('mizu_smartshop:server:createNewShop', function(shopId)
     TriggerClientEvent('mizu_smartshop:client:registerShop', -1, shopId, SerializeShop(newShop))
     TriggerClientEvent('mizu_smartshop:client:notify', src, 'Shop "' .. shopId .. '" created.', 'success')
     print('^2[mizu_smartshop] New empty shop "' .. shopId .. '" created by ' .. GetPlayerName(src) .. '^0')
+end)
+
+-- Version Checker
+local function CheckVersion()
+    local currentVersion = GetResourceMetadata(GetCurrentResourceName(), 'version', 0)
+    if not currentVersion then
+        print('^3[mizu_smartshop] ⚠ Could not read current version from fxmanifest.lua^0')
+        return
+    end
+
+    PerformHttpRequest('https://api.github.com/repos/1337Mizu/mizu_smartshop/releases/latest', function(statusCode, response, headers)
+        if statusCode ~= 200 or not response then
+            print('^3[mizu_smartshop] ⚠ Could not check for updates (HTTP ' .. tostring(statusCode) .. ')^0')
+            return
+        end
+
+        local data = json.decode(response)
+        if not data or not data.tag_name then
+            print('^3[mizu_smartshop] ⚠ Could not parse update response^0')
+            return
+        end
+
+        local latestVersion = data.tag_name:gsub('^v', '')
+
+        if latestVersion == currentVersion then
+            print('^2[mizu_smartshop] ✓ Up to date (v' .. currentVersion .. ')^0')
+        else
+            print('^1[mizu_smartshop] ✗ Update available! Current: v' .. currentVersion .. ' → Latest: v' .. latestVersion .. '^0')
+            print('^1[mizu_smartshop] Download: https://github.com/1337Mizu/mizu_smartshop/releases/latest^0')
+        end
+    end, 'GET', '', { ['Content-Type'] = 'application/json', ['User-Agent'] = 'mizu_smartshop' })
+end
+
+CreateThread(function()
+    Wait(5000)
+    CheckVersion()
 end)
 
 -- /smartshopcreate <sourceShopId> [newShopId]
