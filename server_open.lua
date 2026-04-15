@@ -50,6 +50,73 @@ function Log.Send(title, message, color, plainMsg)
     end
 end
 
+-- Dynamic Pricing Engine
+local DynamicPrices = {} -- DynamicPrices[shopId][itemName] = currentPrice
+local DynamicLastRefresh = {} -- DynamicLastRefresh[shopId] = os.time() of last refresh
+
+local function CalculateDynamicPrice(basePrice, shop, item)
+    if item.minPrice and item.maxPrice then
+        return math.random(item.minPrice, item.maxPrice)
+    end
+    local range = shop.DynamicPriceRange or 30
+    local minP = math.floor(basePrice * (1 - range / 100))
+    local maxP = math.ceil(basePrice * (1 + range / 100))
+    if minP < 0 then minP = 0 end
+    if maxP < minP then maxP = minP end
+    return math.random(minP, maxP)
+end
+
+local function RefreshDynamicPrices(shopId)
+    local shop = Config.Shops[shopId]
+    if not shop or not shop.DynamicPricing then
+        DynamicPrices[shopId] = nil
+        DynamicLastRefresh[shopId] = nil
+        return
+    end
+    DynamicPrices[shopId] = {}
+    for _, item in ipairs(shop.items or {}) do
+        DynamicPrices[shopId][item.name] = CalculateDynamicPrice(item.price, shop, item)
+    end
+    DynamicLastRefresh[shopId] = os.time()
+end
+
+local function RefreshAllDynamicPrices()
+    for shopId, shop in pairs(Config.Shops) do
+        if shop.DynamicPricing then
+            RefreshDynamicPrices(shopId)
+        end
+    end
+end
+
+local function GetDynamicPrice(shopId, itemName, basePrice)
+    if DynamicPrices[shopId] and DynamicPrices[shopId][itemName] then
+        return DynamicPrices[shopId][itemName]
+    end
+    return basePrice
+end
+
+-- Seed random number generator
+math.randomseed(os.time())
+
+-- Price update thread — checks each shop's individual interval
+CreateThread(function()
+    while true do
+        Wait(60 * 1000) -- Check every minute
+        local now = os.time()
+        local globalInterval = (Config.DynamicPriceInterval or 30) * 60
+        for shopId, shop in pairs(Config.Shops) do
+            if shop.DynamicPricing then
+                local shopInterval = (shop.DynamicPriceInterval or globalInterval / 60) * 60
+                if shopInterval <= 0 then shopInterval = globalInterval end
+                local lastRefresh = DynamicLastRefresh[shopId] or 0
+                if (now - lastRefresh) >= shopInterval then
+                    RefreshDynamicPrices(shopId)
+                end
+            end
+        end
+    end
+end)
+
 -- Checkout handler
 RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, paymentType)
     local src = source
@@ -115,8 +182,9 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
                 local maxQ = itemData.maxQty or 999
                 if pQty > maxQ then pQty = maxQ end
                 
-                totalCost = totalCost + (itemData.price * pQty)
-                table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = itemData.price })
+                local actualPrice = shop.DynamicPricing and GetDynamicPrice(shopId, itemData.name, itemData.price) or itemData.price
+                totalCost = totalCost + (actualPrice * pQty)
+                table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = actualPrice })
             else
                 Log.Send("Grade Restricted", "Player " .. GetPlayerName(src) .. " tried to buy ["..itemData.name.."] but lacks grade "..tostring(reqGrade)..".", 16711680)
             end
@@ -354,33 +422,37 @@ local function SaveAllShops()
 end
 
 LoadSavedShops()
+RefreshAllDynamicPrices() -- Refresh after saved shops are loaded
 
 -- Image Scanner — collects available images at startup
 
 local AvailableImages = {}
+local ImagePathMap = {}
 
 local function ScanImages()
     local images = {}
+    local pathMap = {}
     local resourcePath = GetResourcePath(GetCurrentResourceName())
+    local resName = GetCurrentResourceName()
     local scanPaths = {
-        { path = resourcePath .. '\\html\\images', prefix = '' },
+        { path = resourcePath .. '\\html\\images', nui = 'nui://' .. resName .. '/html/images/' },
     }
 
     -- Also scan common inventory image folders
     local inventoryPaths = {
-        { res = 'qb-inventory', sub = '\\html\\images' },
-        { res = 'ox_inventory', sub = '\\web\\images' },
-        { res = 'qs-inventory', sub = '\\html\\images' },
-        { res = 'ps-inventory', sub = '\\html\\images' },
-        { res = 'lj-inventory', sub = '\\html\\images' },
-        { res = 'esx_inventory', sub = '\\html\\images' },
+        { res = 'qb-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
+        { res = 'ox_inventory', sub = '\\web\\images', nuiSub = '/web/images/' },
+        { res = 'qs-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
+        { res = 'ps-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
+        { res = 'lj-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
+        { res = 'esx_inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
     }
 
     for _, inv in ipairs(inventoryPaths) do
         if GetResourceState(inv.res) ~= 'missing' then
             local invPath = GetResourcePath(inv.res)
             if invPath then
-                table.insert(scanPaths, { path = invPath .. inv.sub, prefix = '' })
+                table.insert(scanPaths, { path = invPath .. inv.sub, nui = 'nui://' .. inv.res .. inv.nuiSub })
             end
         end
     end
@@ -394,6 +466,9 @@ local function ScanImages()
                 if (lower:match('%.png$') or lower:match('%.jpg$') or lower:match('%.jpeg$') or lower:match('%.webp$')) and not seen[lower] then
                     seen[lower] = true
                     table.insert(images, file)
+                    local nuiUrl = sp.nui .. file
+                    pathMap[file] = nuiUrl
+                    pathMap[lower] = nuiUrl
                 end
             end
             handle:close()
@@ -401,10 +476,10 @@ local function ScanImages()
     end
 
     table.sort(images, function(a, b) return a:lower() < b:lower() end)
-    return images
+    return images, pathMap
 end
 
-AvailableImages = ScanImages()
+AvailableImages, ImagePathMap = ScanImages()
 print('^2[mizu_smartshop] Scanned ' .. #AvailableImages .. ' available images.^0')
 
 -- Admin Panel Events
@@ -437,26 +512,92 @@ end
 
 local function GetAllItems()
     local items = {}
+    local seen = {}
+
+    -- 1) Framework items
     if Framework == 'qbcore' then
         local shared = QBCore.Shared.Items
         if shared then
             for name, data in pairs(shared) do
-                table.insert(items, { name = name, label = data.label or name })
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
             end
         end
     elseif Framework == 'qbox' then
         local shared = exports.qbx_core:GetItems()
         if shared then
             for name, data in pairs(shared) do
-                table.insert(items, { name = name, label = data.label or name })
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
             end
         end
     elseif Framework == 'esx' then
         local result = MySQL and MySQL.query and MySQL.query.await('SELECT name, label FROM items') or {}
         for _, row in ipairs(result) do
-            table.insert(items, { name = row.name, label = row.label or row.name })
+            if not seen[row.name] then
+                seen[row.name] = true
+                table.insert(items, { name = row.name, label = row.label or row.name })
+            end
         end
     end
+
+    -- 2) Inventory resource items (additional/authoritative source)
+    if GetResourceState('ox_inventory') == 'started' then
+        local ok, invItems = pcall(exports.ox_inventory.Items, exports.ox_inventory)
+        if ok and invItems then
+            for name, data in pairs(invItems) do
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
+            end
+        end
+    elseif GetResourceState('qb-inventory') == 'started' then
+        local ok, invItems = pcall(exports['qb-inventory'].GetItemList, exports['qb-inventory'])
+        if ok and invItems then
+            for name, data in pairs(invItems) do
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
+            end
+        end
+    elseif GetResourceState('qs-inventory') == 'started' then
+        local ok, invItems = pcall(exports['qs-inventory'].GetItemList, exports['qs-inventory'])
+        if ok and invItems then
+            for name, data in pairs(invItems) do
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
+            end
+        end
+    elseif GetResourceState('ps-inventory') == 'started' then
+        local ok, invItems = pcall(exports['ps-inventory'].GetItemList, exports['ps-inventory'])
+        if ok and invItems then
+            for name, data in pairs(invItems) do
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
+            end
+        end
+    elseif GetResourceState('lj-inventory') == 'started' then
+        local ok, invItems = pcall(exports['lj-inventory'].GetItemList, exports['lj-inventory'])
+        if ok and invItems then
+            for name, data in pairs(invItems) do
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(items, { name = name, label = data.label or name })
+                end
+            end
+        end
+    end
+
     table.sort(items, function(a, b) return a.label:lower() < b.label:lower() end)
     return items
 end
@@ -483,6 +624,19 @@ RegisterNetEvent('mizu_smartshop:server:requestSavedShops', function()
     TriggerClientEvent('mizu_smartshop:client:receiveSavedShops', src, shops)
 end)
 
+RegisterNetEvent('mizu_smartshop:server:requestDynamicPrices', function(shopId)
+    local src = source
+    local shop = Config.Shops[shopId]
+    if not shop or not shop.DynamicPricing then
+        TriggerClientEvent('mizu_smartshop:client:receiveDynamicPrices', src, shopId, nil)
+        return
+    end
+    if not DynamicPrices[shopId] then
+        RefreshDynamicPrices(shopId)
+    end
+    TriggerClientEvent('mizu_smartshop:client:receiveDynamicPrices', src, shopId, DynamicPrices[shopId])
+end)
+
 RegisterNetEvent('mizu_smartshop:server:requestAdminData', function()
     local src = source
     if not IsAdmin(src) then return end
@@ -493,7 +647,7 @@ RegisterNetEvent('mizu_smartshop:server:requestAdminData', function()
         s._isConfig = ConfigShopIds[id] or false
         shops[id] = s
     end
-    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllJobs(), GetAllItems())
+    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllJobs(), GetAllItems(), ImagePathMap)
 end)
 
 RegisterNetEvent('mizu_smartshop:server:saveShop', function(shopId, shopData)
@@ -514,6 +668,7 @@ RegisterNetEvent('mizu_smartshop:server:saveShop', function(shopId, shopData)
 
     Config.Shops[shopId] = shopData
     SaveAllShops()
+    RefreshDynamicPrices(shopId)
 
     TriggerClientEvent('mizu_smartshop:client:registerShop', -1, shopId, SerializeShop(shopData))
     TriggerClientEvent('mizu_smartshop:client:notify', src, 'Shop "' .. shopId .. '" saved.', 'success')

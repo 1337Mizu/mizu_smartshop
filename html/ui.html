@@ -181,6 +181,26 @@
                                 <div class="admin-col admin-col-btn"><button id="admin-use-pos-btn" class="admin-btn-small" title="Use current position"><i class="fas fa-crosshairs"></i></button></div>
                             </div>
 
+                            <div class="admin-toggle-section">
+                                <h3 class="admin-section-title" style="margin-top: 16px;">Dynamic Pricing <span class="admin-hint">(<i class="fas fa-chart-line"></i> prices fluctuate automatically)</span></h3>
+                                <label class="admin-toggle">
+                                    <input type="checkbox" id="admin-dynamic-enabled">
+                                    <span class="admin-toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div id="admin-dynamic-fields" style="display: none;">
+                                <div class="admin-row">
+                                    <div class="admin-col">
+                                        <label class="admin-label">Price Range <span class="admin-hint">(± %)</span></label>
+                                        <input type="number" id="admin-dynamic-range" class="admin-input" value="30" min="1" max="100">
+                                    </div>
+                                    <div class="admin-col">
+                                        <label class="admin-label">Interval <span class="admin-hint">(minutes, 0 = global default)</span></label>
+                                        <input type="number" id="admin-dynamic-interval" class="admin-input" value="0" min="0">
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="admin-actions">
                                 <button id="admin-save-btn" class="admin-btn admin-btn-primary"><i class="fas fa-save"></i> Save</button>
                                 <button id="admin-reset-btn" class="admin-btn admin-btn-warning" style="display:none;"><i class="fas fa-undo"></i> Reset to Config</button>
@@ -228,6 +248,16 @@
                         <div class="admin-col">
                             <label class="admin-label">Max Qty</label>
                             <input type="number" id="item-edit-maxqty" class="admin-input" value="999" min="1">
+                        </div>
+                    </div>
+                    <div class="admin-row" id="item-dynamic-price-row" style="display: none;">
+                        <div class="admin-col">
+                            <label class="admin-label">Min Price <span class="admin-hint">(optional override)</span></label>
+                            <input type="number" id="item-edit-minprice" class="admin-input" placeholder="auto" min="0">
+                        </div>
+                        <div class="admin-col">
+                            <label class="admin-label">Max Price <span class="admin-hint">(optional override)</span></label>
+                            <input type="number" id="item-edit-maxprice" class="admin-input" placeholder="auto" min="0">
                         </div>
                     </div>
                     <div class="admin-row">

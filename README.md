@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop v1.2.0
+# 🛒 Mizu SmartShop v1.3.0
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -37,7 +37,7 @@
 
 ### 🎨 Customization
 - 5 color themes (Default, Green, Yellow, Silver, Red)
-- 7 built-in languages (EN, DE, ES, FR, PL, PT, TR)
+- 7 built-in languages (EN, DE, ES, FR, PL, PT, TR, IT)
 - Unlimited shops with custom items & images
 - Per-item pricing, categories & max quantities
 
@@ -104,6 +104,19 @@
 
 </td>
 </tr>
+<tr>
+<td colspan="2">
+
+### 📈 Dynamic Pricing (v1.3.0)
+- Prices fluctuate automatically within a configurable range per item (`minPrice` / `maxPrice`)
+- Toggle dynamic pricing on or off per shop via admin panel or config
+- Adjustable refresh interval per shop (`DynamicPriceInterval`) or globally via `Config.DynamicPriceInterval`
+- Configurable price range percentage (`DynamicPriceRange`) as fallback when no min/max is set
+- Dynamic prices displayed in orange with animated icon in the shop UI
+- Settings persist across script restarts via `saved_shops.json`
+
+</td>
+</tr>
 </table>
 
 ### 🛠️ In-Game Admin Panel
@@ -114,6 +127,8 @@
 - Edit shop settings: name, coords, blip, marker, job restrictions
 - Add, edit & remove items with built-in image picker
 - Item name picker — browse all registered framework items (QBCore/ESX/QBox)
+- Dynamic pricing toggle, range & interval settings per shop
+- Per-item min/max price configuration for dynamic pricing
 - Searchable multi-select job dropdown (auto-populated from framework)
 - `/smartshopcreate` — Clone any shop to your current position
 - Changes sync instantly to all players & persist via `saved_shops.json`

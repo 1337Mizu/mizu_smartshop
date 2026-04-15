@@ -4,6 +4,7 @@ Config.Locale = 'en'           -- 'en', 'de', 'es', 'fr', 'pl', 'pt', 'tr'
 Config.Theme = 'default'       -- 'default', 'green', 'yellow', 'silver', 'red'
 Config.TargetSystem = 'none'   -- 'none', 'qb-target', 'ox-target'
 Config.LogType = 'discord'     -- 'discord' or 'fivemanage'
+Config.DynamicPriceInterval = 30 -- Minutes between price updates (global default)
 
 Config.WebhookURL = ''
 Config.FivemanageToken = ''
@@ -12,6 +13,9 @@ Config.Shops = {
     ['247_supermarket'] = {
         name = '24/7 Supermarket',
         coords = vector3(-263.18, -2415.76, 121.37),
+        DynamicPricing = true,          -- Enable dynamic pricing for this shop
+        DynamicPriceRange = 30,          -- ±30% price fluctuation (default range)
+        --DynamicPriceInterval = 30,    -- Override global interval for this shop (minutes)
         Blipname = 'Supermarket', -- remove to disable blip
         BlipSprite = 52,
         BlipColor = 2,
@@ -25,7 +29,7 @@ Config.Shops = {
         items = {
             { name = 'water_bottle', label = 'Juice', price = 5, image = 'berriesjuice.png', maxQty = 999, category = 'Food & Snacks' },
             { name = 'Burger', label = 'Burger', price = 4, image = 'burger.png', maxQty = 50, category = 'Food & Snacks' },
-            { name = 'vanbottle', label = 'Gin', price = 500, image = 'vanbottle.png', maxQty = 5, category = 'Food & Snacks' },
+            { name = 'vanbottle', label = 'Gin', price = 500, image = 'vanbottle.png', maxQty = 5, category = 'Food & Snacks', minPrice = 555, maxPrice = 666 }, -- dynamic pricing override
             { name = 'repairkit', label = 'Repair Kit', price = 250, image = 'lockpick.png', maxQty = 10, category = 'Equipment' },
             { name = 'medikit', label = 'Medikit', price = 50, image = 'firstaid.png', maxQty = 3, category = 'Equipment' },
             { name = 'radio', label = 'Radio', price = 250, image = 'radio.png', maxQty = 10, category = 'Equipment' },

@@ -2,6 +2,7 @@ let currentLocales = {};
 let cart = [];
 let currentItems = [];
 let currentCategory = null; // null = "All"
+let isDynamicPricingShop = false;
 
 window.addEventListener('message', function (event) {
     const data = event.data;
@@ -9,6 +10,7 @@ window.addEventListener('message', function (event) {
     if (data.action === 'openShop') {
         currentLocales = data.locales;
         currentItems = data.items;
+        isDynamicPricingShop = data.dynamicPricing || false;
 
         document.documentElement.setAttribute('data-theme', data.theme || 'default');
 
@@ -116,21 +118,29 @@ function renderItems(items) {
         const card = document.createElement('div');
         card.className = 'item-card';
 
+        const displayPrice = item.dynamicPrice !== undefined ? item.dynamicPrice : item.price;
+        const priceHtml = item.dynamicPrice !== undefined
+            ? `<div class="item-price item-price-dynamic"><i class="fas fa-chart-line dynamic-price-icon"></i> $${displayPrice}</div>`
+            : `<div class="item-price">$${displayPrice}</div>`;
+
         card.innerHTML = `
-            <img src="nui://mizu_smartshop/html/images/${item.image}" alt="${item.label}" class="item-image" onerror="window.handleImageFallback(this, '${item.image}')">
+            <div class="item-img-wrapper"></div>
             <div class="item-info">
                 <div class="item-name">${item.label}</div>
-                <div class="item-price">$${item.price}</div>
+                ${priceHtml}
             </div>
             <div class="qty-control">
                 <button class="qty-btn minus" data-item="${item.name}"><i class="fas fa-minus"></i></button>
                 <input type="number" class="qty-input" id="qty-${item.name}" value="1" min="1" step="1">
                 <button class="qty-btn plus" data-item="${item.name}"><i class="fas fa-plus"></i></button>
             </div>
-            <button class="buy-btn" data-item="${item.name}" data-price="${item.price}" data-label="${item.label}">
+            <button class="buy-btn" data-item="${item.name}" data-price="${displayPrice}" data-label="${item.label}">
                 <i class="fas fa-cart-plus"></i> ${currentLocales['add_to_cart'] || 'Add to Cart'}
             </button>
         `;
+
+        const imgWrapper = card.querySelector('.item-img-wrapper');
+        imgWrapper.replaceWith(window.createFallbackImg(item.image, 'item-image', item.label));
 
         grid.appendChild(card);
     });
@@ -323,18 +333,56 @@ window.inventoryImagePaths = [
     'nui://esx_inventory/html/images/'
 ];
 
-window.handleImageFallback = function(imgElement, imageName) {
-    let idx = parseInt(imgElement.getAttribute('data-fallback-idx')) || 0;
-    
-    if (idx < window.inventoryImagePaths.length) {
-        let path = window.inventoryImagePaths[idx];
-        imgElement.setAttribute('data-fallback-idx', idx + 1);
-        imgElement.src = path + imageName;
-    } else {
-        imgElement.onerror = null;
-        // Last resort offline placeholder so it avoids CORS/HTTP blocks in FiveM
-        imgElement.src = 'nui://mizu_smartshop/html/images/placeholder.png'; 
+window.createFallbackImg = function(imageName, cssClass, altText) {
+    const img = document.createElement('img');
+    if (cssClass) img.className = cssClass;
+    if (altText) img.alt = altText;
+    img.dataset.imageName = imageName;
+
+    const knownPath = imagePathMap[imageName] || imagePathMap[imageName.toLowerCase()];
+    if (knownPath) {
+        const lowerPath = knownPath.replace(/\.[A-Z]+$/, function(ext) { return ext.toLowerCase(); });
+        const hasAltPath = (lowerPath !== knownPath);
+        img.onerror = function() {
+            if (hasAltPath && this.src !== lowerPath) {
+                this.src = lowerPath;
+            } else {
+                this.onerror = null;
+                this.src = 'nui://mizu_smartshop/html/images/placeholder.png';
+            }
+        };
+        img.src = knownPath;
+        return img;
     }
+
+    const lowerName = imageName.toLowerCase();
+    const hasAltCase = (lowerName !== imageName);
+    const candidates = [];
+    for (const p of window.inventoryImagePaths) {
+        candidates.push(p + imageName);
+    }
+    if (hasAltCase) {
+        for (const p of window.inventoryImagePaths) {
+            candidates.push(p + lowerName);
+        }
+    }
+    img.dataset.fallbackIdx = '0';
+    img.onerror = function() {
+        let idx = parseInt(this.dataset.fallbackIdx) || 0;
+        let currentSrc = this.src || '';
+        while (idx < candidates.length) {
+            let candidate = candidates[idx];
+            idx++;
+            if (candidate === currentSrc) continue;
+            this.dataset.fallbackIdx = idx.toString();
+            this.src = candidate;
+            return;
+        }
+        this.onerror = null;
+        this.src = 'nui://mizu_smartshop/html/images/placeholder.png';
+    };
+    img.src = 'nui://mizu_smartshop/html/images/' + imageName;
+    return img;
 }
 
 // =============================================================================
@@ -345,6 +393,7 @@ let adminShops = {};
 let adminImages = [];
 let adminJobs = [];
 let adminItems = [];
+let imagePathMap = {};
 let selectedJobs = [];
 let editingShopId = null;
 let editingItemIndex = -1; // -1 = new item
@@ -359,6 +408,7 @@ window.addEventListener('message', function (event) {
         adminImages = data.images || [];
         adminJobs = data.jobs || [];
         adminItems = data.items || [];
+        imagePathMap = data.imagePathMap || {};
         currentLocales = data.locales || {};
 
         document.documentElement.setAttribute('data-theme', data.theme || 'default');
@@ -570,6 +620,13 @@ function openShopEditor(shopId) {
     document.getElementById('admin-reset-btn').style.display = (isConfig && shop._override) ? '' : 'none';
     document.getElementById('admin-delete-btn').style.display = shop._dynamic ? '' : 'none';
 
+// --- Dynamic Pricing fields ---
+    const hasDynamic = !!shop.DynamicPricing;
+    document.getElementById('admin-dynamic-enabled').checked = hasDynamic;
+    document.getElementById('admin-dynamic-fields').style.display = hasDynamic ? '' : 'none';
+    document.getElementById('admin-dynamic-range').value = shop.DynamicPriceRange || 30;
+    document.getElementById('admin-dynamic-interval').value = shop.DynamicPriceInterval || 0;
+
     renderAdminItems();
 }
 
@@ -607,6 +664,7 @@ function renderAdminItems() {
         el.className = 'cart-item admin-item-row';
 
         let meta = `$${item.price || 0}`;
+        if (item.minPrice || item.maxPrice) meta += ` ($${item.minPrice || '?'}–$${item.maxPrice || '?'})`;
         if (item.maxQty) meta += ` · Max ${item.maxQty}`;
         if (item.grade) meta += ` · Grade ${item.grade}`;
         if (item.category) meta += ` · ${item.category}`;
@@ -737,6 +795,14 @@ function buildShopData() {
         }
     }
 
+    // --- Dynamic Pricing ---
+    if (document.getElementById('admin-dynamic-enabled').checked) {
+        data.DynamicPricing = true;
+        data.DynamicPriceRange = parseInt(document.getElementById('admin-dynamic-range').value) || 30;
+        const interval = parseInt(document.getElementById('admin-dynamic-interval').value) || 0;
+        if (interval > 0) data.DynamicPriceInterval = interval;
+    }
+
     return data;
 }
 
@@ -831,6 +897,12 @@ function openItemEditor(index) {
     document.getElementById('item-edit-image').value = item.image || '';
     updateItemImagePreview(item.image || '');
 
+    // Dynamic price overrides (show only when shop has dynamic pricing enabled)
+    const dynamicEnabled = document.getElementById('admin-dynamic-enabled').checked;
+    document.getElementById('item-dynamic-price-row').style.display = dynamicEnabled ? '' : 'none';
+    document.getElementById('item-edit-minprice').value = item.minPrice || '';
+    document.getElementById('item-edit-maxprice').value = item.maxPrice || '';
+
     modal.style.display = 'flex';
 }
 
@@ -852,6 +924,11 @@ document.getElementById('item-edit-save').addEventListener('click', function() {
 
     const category = document.getElementById('item-edit-category').value.trim();
     if (category) item.category = category;
+
+    const minPrice = parseInt(document.getElementById('item-edit-minprice').value);
+    const maxPrice = parseInt(document.getElementById('item-edit-maxprice').value);
+    if (minPrice > 0) item.minPrice = minPrice;
+    if (maxPrice > 0) item.maxPrice = maxPrice;
 
     if (!item.name || !item.label) return;
 
@@ -876,7 +953,8 @@ function updateItemImagePreview(imageName) {
         preview.innerHTML = '';
         return;
     }
-    preview.innerHTML = `<img src="nui://mizu_smartshop/html/images/${imageName}" onerror="window.handleImageFallback(this, '${imageName}')" class="admin-preview-img">`;
+    preview.innerHTML = '';
+    preview.appendChild(window.createFallbackImg(imageName, 'admin-preview-img'));
 }
 
 // --- Image Picker Modal ---
@@ -903,10 +981,12 @@ function renderImagePicker(images) {
     images.forEach(img => {
         const tile = document.createElement('div');
         tile.className = 'image-picker-tile';
-        tile.innerHTML = `
-            <img src="nui://mizu_smartshop/html/images/${img}" onerror="window.handleImageFallback(this, '${img}')" class="image-picker-img">
-            <div class="image-picker-name">${img}</div>
-        `;
+        const imgEl = window.createFallbackImg(img, 'image-picker-img');
+        tile.appendChild(imgEl);
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'image-picker-name';
+        nameDiv.textContent = img;
+        tile.appendChild(nameDiv);
         tile.addEventListener('click', function() {
             document.getElementById('item-edit-image').value = img;
             updateItemImagePreview(img);
@@ -992,6 +1072,13 @@ document.getElementById('admin-ped-enabled').addEventListener('change', function
         document.getElementById('admin-ped-heading').value = 0;
         document.getElementById('admin-ped-scenario').value = '';
     }
+});
+
+// --- Dynamic Pricing Toggle ---
+document.getElementById('admin-dynamic-enabled').addEventListener('change', function() {
+    document.getElementById('admin-dynamic-fields').style.display = this.checked ? '' : 'none';
+    // Show/hide minPrice/maxPrice row in item editor when dynamic is active
+    document.getElementById('item-dynamic-price-row').style.display = this.checked ? '' : 'none';
 });
 
 document.getElementById('admin-use-heading-btn').addEventListener('click', function() {

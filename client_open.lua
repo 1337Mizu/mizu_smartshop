@@ -299,6 +299,8 @@ RegisterNUICallback('checkoutCart', function(data, cb)
     cb('ok')
 end)
 
+local PendingShopOpen = nil
+
 function OpenShop(shopId)
     local shop = Config.Shops[shopId]
     if not shop then return end
@@ -317,15 +319,48 @@ function OpenShop(shopId)
     end
 
     CurrentShop = shopId
+
+    -- Request dynamic prices from server if shop uses dynamic pricing
+    if shop.DynamicPricing then
+        TriggerServerEvent('mizu_smartshop:server:requestDynamicPrices', shopId)
+        PendingShopOpen = { filteredItems = filteredItems, shop = shop }
+    else
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'openShop',
+            shopName = shop.name,
+            items = filteredItems,
+            dynamicPricing = false,
+            locales = Locales[Config.Locale],
+            theme = Config.Theme or 'default'
+        })
+    end
+end
+
+RegisterNetEvent('mizu_smartshop:client:receiveDynamicPrices', function(shopId, prices)
+    if not PendingShopOpen or CurrentShop ~= shopId then return end
+    local data = PendingShopOpen
+    PendingShopOpen = nil
+
+    -- Apply dynamic prices to filtered items
+    if prices then
+        for _, item in ipairs(data.filteredItems) do
+            if prices[item.name] then
+                item.dynamicPrice = prices[item.name]
+            end
+        end
+    end
+
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openShop',
-        shopName = shop.name,
-        items = filteredItems,
+        shopName = data.shop.name,
+        items = data.filteredItems,
+        dynamicPricing = true,
         locales = Locales[Config.Locale],
         theme = Config.Theme or 'default'
     })
-end
+end)
 
 -- Marker fallback (when no target system is used)
 if Config.TargetSystem == 'none' then
@@ -590,7 +625,7 @@ end)
 
 local AdminOpen = false
 
-RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, images, jobs, items)
+RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, images, jobs, items, imagePathMap)
     AdminOpen = true
     SetNuiFocus(true, true)
     SendNUIMessage({
@@ -599,6 +634,7 @@ RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, image
         images = images or {},
         jobs = jobs or {},
         items = items or {},
+        imagePathMap = imagePathMap or {},
         locales = Locales[Config.Locale],
         theme = Config.Theme or 'default'
     })
