@@ -435,17 +435,17 @@ local function ScanImages()
     local resourcePath = GetResourcePath(GetCurrentResourceName())
     local resName = GetCurrentResourceName()
     local scanPaths = {
-        { path = resourcePath .. '\\html\\images', nui = 'nui://' .. resName .. '/html/images/' },
+        { path = resourcePath .. '/html/images', nui = 'nui://' .. resName .. '/html/images/' },
     }
 
     -- Also scan common inventory image folders
     local inventoryPaths = {
-        { res = 'qb-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
-        { res = 'ox_inventory', sub = '\\web\\images', nuiSub = '/web/images/' },
-        { res = 'qs-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
-        { res = 'ps-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
-        { res = 'lj-inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
-        { res = 'esx_inventory', sub = '\\html\\images', nuiSub = '/html/images/' },
+        { res = 'qb-inventory', sub = '/html/images', nuiSub = '/html/images/' },
+        { res = 'ox_inventory', sub = '/web/images', nuiSub = '/web/images/' },
+        { res = 'qs-inventory', sub = '/html/images', nuiSub = '/html/images/' },
+        { res = 'ps-inventory', sub = '/html/images', nuiSub = '/html/images/' },
+        { res = 'lj-inventory', sub = '/html/images', nuiSub = '/html/images/' },
+        { res = 'esx_inventory', sub = '/html/images', nuiSub = '/html/images/' },
     }
 
     for _, inv in ipairs(inventoryPaths) do
@@ -457,11 +457,19 @@ local function ScanImages()
         end
     end
 
+    local isWindows = resourcePath:find('\\') ~= nil
     local seen = {}
     for _, sp in ipairs(scanPaths) do
-        local handle = io.popen('dir "' .. sp.path .. '" /b /a-d 2>nul')
+        local cmd
+        if isWindows then
+            cmd = 'dir "' .. sp.path .. '" /b /a-d 2>nul'
+        else
+            cmd = 'ls -1 "' .. sp.path .. '" 2>/dev/null'
+        end
+        local handle = io.popen(cmd)
         if handle then
             for file in handle:lines() do
+                file = file:gsub('%s+$', '')
                 local lower = file:lower()
                 if (lower:match('%.png$') or lower:match('%.jpg$') or lower:match('%.jpeg$') or lower:match('%.webp$')) and not seen[lower] then
                     seen[lower] = true
@@ -526,12 +534,14 @@ local function GetAllItems()
             end
         end
     elseif Framework == 'qbox' then
-        local shared = exports.qbx_core:GetItems()
-        if shared then
-            for name, data in pairs(shared) do
-                if not seen[name] then
-                    seen[name] = true
-                    table.insert(items, { name = name, label = data.label or name })
+        if GetResourceState('ox_inventory') == 'started' then
+            local ok, shared = pcall(exports.ox_inventory.Items, exports.ox_inventory)
+            if ok and shared then
+                for name, data in pairs(shared) do
+                    if not seen[name] then
+                        seen[name] = true
+                        table.insert(items, { name = name, label = data.label or name })
+                    end
                 end
             end
         end
@@ -557,9 +567,8 @@ local function GetAllItems()
             end
         end
     elseif GetResourceState('qb-inventory') == 'started' then
-        local ok, invItems = pcall(exports['qb-inventory'].GetItemList, exports['qb-inventory'])
-        if ok and invItems then
-            for name, data in pairs(invItems) do
+        if QBCore and QBCore.Shared and QBCore.Shared.Items then
+            for name, data in pairs(QBCore.Shared.Items) do
                 if not seen[name] then
                     seen[name] = true
                     table.insert(items, { name = name, label = data.label or name })
@@ -577,7 +586,7 @@ local function GetAllItems()
             end
         end
     elseif GetResourceState('ps-inventory') == 'started' then
-        local ok, invItems = pcall(exports['ps-inventory'].GetItemList, exports['ps-inventory'])
+        local ok, invItems = pcall(exports['ps-inventory'].Items, exports['ps-inventory'])
         if ok and invItems then
             for name, data in pairs(invItems) do
                 if not seen[name] then
@@ -587,7 +596,7 @@ local function GetAllItems()
             end
         end
     elseif GetResourceState('lj-inventory') == 'started' then
-        local ok, invItems = pcall(exports['lj-inventory'].GetItemList, exports['lj-inventory'])
+        local ok, invItems = pcall(exports['lj-inventory'].Items, exports['lj-inventory'])
         if ok and invItems then
             for name, data in pairs(invItems) do
                 if not seen[name] then
