@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop v1.3.0
+# 🛒 Mizu SmartShop v1.3.2
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
