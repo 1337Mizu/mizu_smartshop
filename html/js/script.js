@@ -465,7 +465,9 @@ function renderAdminShops(shops) {
     const grid = document.getElementById('admin-shops-grid');
     grid.innerHTML = '';
 
-    for (const [id, shop] of Object.entries(shops)) {
+    const sortedEntries = Object.entries(shops).sort((a, b) => a[0].localeCompare(b[0]));
+
+    for (const [id, shop] of sortedEntries) {
         const card = document.createElement('div');
         card.className = 'admin-shop-card';
 

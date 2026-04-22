@@ -117,6 +117,27 @@
 
 </td>
 </tr>
+<tr>
+<td colspan="2">
+
+### 🐧 Cross-Platform Compatibility (v1.3.1)
+- Full Linux server support - all image paths normalized to be case-sensitive & OS-agnostic
+- Resource loads correctly on both Windows and Linux FiveM servers without manual path adjustments
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+### 📋 Premade Config (v1.3.2)
+- `config.lua` comes pre-filled with all standard GTA V shop locations - ready to use out of the box
+- `defaultlocations.md` lists all available shop locations as an additional reference
+- Covers 24/7, LTD Gasoline, Rob's Liquor, Hardware Stores, Ammunation, Weedshop, Sea Word, Leisure Shop, Police & Ambulance Armory, Mechanic Shops, Benny's, Beeker's Garage, Prison Canteen & Black Market
+- No manual coordinate conversion needed — copy individual entries from `defaultlocations.md` into your `config.lua` as needed
+- Admin panel (`/smartshopedit`) now lists shops sorted alphabetically by shop ID
+
+</td>
+</tr>
 </table>
 
 ### 🛠️ In-Game Admin Panel
