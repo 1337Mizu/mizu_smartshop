@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop v1.3.2
+# 🛒 Mizu SmartShop (v1.3.3)
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -138,6 +138,18 @@
 
 </td>
 </tr>
+<tr>
+<td colspan="2">
+
+### 🏷️ Item Metadata Support (v1.3.3)
+- Optional `metadata` field per item - fully backwards compatible, items without it work exactly as before
+- Metadata is passed directly to the inventory system on purchase (`AddItem`)
+- Explicitly supported inventory systems: qb-inventory (QBCore), lj-inventory (QBCore), ox_inventory (QBCore, ESX & QBox), qs-inventory (QBCore/ESX), codem-inventory (QBCore/ESX), standard ESX (metadata ignored gracefully)
+- Other inventory systems are not explicitly handled - metadata will not be passed at the moment
+- Useful for weapons with serial numbers, expiry dates, vehicle keys, licenses, custom labels and more
+
+</td>
+</tr>
 </table>
 
 ### 🛠️ In-Game Admin Panel
@@ -163,6 +175,21 @@
 ### 🔄 Auto Update Check
 - On startup, checks GitHub for the latest release
 - Prints status to server console (up to date / update available)
+
+### 🏷️ Metadata Examples
+
+**Example 1 — Weapon with serial number:**
+```lua
+{ name = 'weapon_pistol', label = 'Pistol', price = 2500, image = 'weapon_pistol.png', maxQty = 1, category = 'Weapons',
+  metadata = { label = 'Pistol', serial = 'MIZU-' .. math.random(100000, 999999), durability = 100 } },
+```
+
+**Example 2 — Item with custom image from another resource (Windows & Linux compatible via `nui://`):**
+```lua
+{ name = 'weapon_knife', label = 'Combat Knife', price = 800, image = 'weapon_knife.png', maxQty = 1, category = 'Weapons',
+  metadata = { label = 'Combat Knife', imageurl = 'nui://mizu_smartshop/html/images/weapon_knife.png', serial = 'MIZU-' .. math.random(100000, 999999) } },
+```
+> `nui://` paths work identically on Windows and Linux servers - use them whenever referencing images from another resource.
 
 ---
 

@@ -50,6 +50,60 @@ function Log.Send(title, message, color, plainMsg)
     end
 end
 
+-- Inventory System Detection
+local InventorySystem = nil
+local function GetInventorySystem()
+    if InventorySystem then return InventorySystem end
+    if GetResourceState('ox_inventory') == 'started' then
+        InventorySystem = 'ox_inventory'
+    elseif GetResourceState('qs-inventory') == 'started' then
+        InventorySystem = 'qs-inventory'
+    elseif GetResourceState('codem-inventory') == 'started' then
+        InventorySystem = 'codem-inventory'
+    else
+        InventorySystem = 'default' -- qb-inventory / lj-inventory / ESX standard
+    end
+    print('^2[mizu_smartshop] Inventory system: ' .. InventorySystem .. '^0')
+    return InventorySystem
+end
+
+-- Returns true if the player can carry the item. Falls back to true if no check is available.
+local function InventoryCanCarry(src, itemName, qty, xPlayer)
+    local inv = GetInventorySystem()
+    if inv == 'ox_inventory' then
+        return exports.ox_inventory:CanCarryItem(src, itemName, qty)
+    elseif inv == 'qs-inventory' then
+        return exports['qs-inventory']:CanCarryItem(src, itemName, qty)
+    elseif xPlayer and xPlayer.canCarryItem then
+        return xPlayer.canCarryItem(itemName, qty)
+    end
+    return true -- no pre-check available for this inventory, assume can carry
+end
+
+-- Adds item to inventory with optional metadata
+-- 'player' = QBCore/QBox player object, 'xPlayer' = ESX player object
+local function InventoryAddItem(src, itemName, qty, metadata, player, xPlayer)
+    local inv = GetInventorySystem()
+    if inv == 'ox_inventory' then
+        exports.ox_inventory:AddItem(src, itemName, qty, metadata)
+        return true
+    elseif inv == 'qs-inventory' then
+        local ok = exports['qs-inventory']:AddItem(src, itemName, qty, metadata)
+        return ok ~= false
+    elseif inv == 'codem-inventory' then
+        exports['codem-inventory']:AddItem(src, itemName, qty, metadata)
+        return true
+    elseif player and player.Functions and player.Functions.AddItem then
+        -- qb-inventory (QBCore) / lj-inventory
+        return player.Functions.AddItem(itemName, qty, false, metadata)
+    elseif xPlayer and xPlayer.addInventoryItem then
+        -- ESX standard inventory (no metadata support)
+        xPlayer.addInventoryItem(itemName, qty)
+        return true
+    end
+    return false
+end
+
 -- Dynamic Pricing Engine
 local DynamicPrices = {} -- DynamicPrices[shopId][itemName] = currentPrice
 local DynamicLastRefresh = {} -- DynamicLastRefresh[shopId] = os.time() of last refresh
@@ -184,7 +238,7 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
                 
                 local actualPrice = shop.DynamicPricing and GetDynamicPrice(shopId, itemData.name, itemData.price) or itemData.price
                 totalCost = totalCost + (actualPrice * pQty)
-                table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = actualPrice })
+                table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = actualPrice, metadata = itemData.metadata })
             else
                 Log.Send("Grade Restricted", "Player " .. GetPlayerName(src) .. " tried to buy ["..itemData.name.."] but lacks grade "..tostring(reqGrade)..".", 16711680)
             end
@@ -198,22 +252,40 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
     if Framework == 'esx' then
         local xPlayer = ESX.GetPlayerFromId(src)
         local account = paymentType == 'cash' and 'money' or 'bank'
-        
+
         if xPlayer.getAccount(account).money >= totalCost then
             local canCarryAll = true
             for _, item in ipairs(validatedItems) do
-                if not xPlayer.canCarryItem(item.name, item.qty) then
+                if not InventoryCanCarry(src, item.name, item.qty, xPlayer) then
                     canCarryAll = false
                     break
                 end
             end
 
             if canCarryAll then
+                local successfulItems = {}
+                local refundedCost = 0
                 xPlayer.removeAccountMoney(account, totalCost)
                 for _, item in ipairs(validatedItems) do
-                    xPlayer.addInventoryItem(item.name, item.qty)
+                    if InventoryAddItem(src, item.name, item.qty, item.metadata, nil, xPlayer) then
+                        table.insert(successfulItems, item)
+                    else
+                        refundedCost = refundedCost + (item.price * item.qty)
+                        local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Inventory Full or Item missing). Refunded automatically."
+                        print("^1[mizu_smartshop ERROR] " .. adminWarn .. "^0")
+                        Log.Send("Shop Warning: " .. shop.name, "**Warning:** " .. adminWarn, 16711680, "Warning: " .. adminWarn)
+                    end
                 end
-                success = true
+                if refundedCost > 0 then
+                    xPlayer.addAccountMoney(account, refundedCost)
+                end
+                if #successfulItems > 0 then
+                    success = true
+                    validatedItems = successfulItems
+                    totalCost = totalCost - refundedCost
+                else
+                    TriggerClientEvent('mizu_smartshop:client:notify', src, _U('inventory_full'), 'error', shop.name)
+                end
             else
                 TriggerClientEvent('mizu_smartshop:client:notify', src, _U('inventory_full'), 'error', shop.name)
             end
@@ -223,34 +295,61 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
     elseif Framework == 'qbcore' then
         local Player = QBCore.Functions.GetPlayer(src)
         if Player.Functions.GetMoney(paymentType) >= totalCost then
-            local successfulItems = {}
-            local failedItems = false
-            local refundedCost = 0
+            local inv = GetInventorySystem()
 
-            for _, item in ipairs(validatedItems) do
-                if Player.Functions.AddItem(item.name, item.qty) then
-                    table.insert(successfulItems, item)
-                    TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[item.name], "add", item.qty)
-                else
-                    failedItems = true
-                    refundedCost = refundedCost + (item.price * item.qty)
-                    local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Missing in DB or Inventory Full). Refunded automatically."
-                    print("^1[mizu_smartshop ERROR] " .. adminWarn .. "^0")
-                    Log.Send("Shop Warning: " .. shop.name, "**Warning:** " .. adminWarn, 16711680, "Warning: " .. adminWarn)
+            if inv == 'ox_inventory' or inv == 'qs-inventory' or inv == 'codem-inventory' then
+                -- Pre-check approach: CanCarry → pay → add
+                local canCarryAll = true
+                for _, item in ipairs(validatedItems) do
+                    if not InventoryCanCarry(src, item.name, item.qty, nil) then
+                        canCarryAll = false
+                        local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Inventory Full)."
+                        print("^1[mizu_smartshop ERROR] " .. adminWarn .. "^0")
+                        Log.Send("Shop Warning: " .. shop.name, "**Warning:** " .. adminWarn, 16711680, "Warning: " .. adminWarn)
+                        break
+                    end
                 end
-            end
 
-            local actualCost = totalCost - refundedCost
+                if canCarryAll then
+                    Player.Functions.RemoveMoney(paymentType, totalCost, "smartshop-checkout")
+                    for _, item in ipairs(validatedItems) do
+                        InventoryAddItem(src, item.name, item.qty, item.metadata, Player, nil)
+                    end
+                    success = true
+                else
+                    TriggerClientEvent('mizu_smartshop:client:notify', src, _U('inventory_full'), 'error', shop.name)
+                end
+            else
+                -- qb-inventory / lj-inventory: add item by item, pay only for successful ones
+                local successfulItems = {}
+                local failedItems = false
+                local refundedCost = 0
 
-            if #successfulItems > 0 then
-                Player.Functions.RemoveMoney(paymentType, actualCost, "smartshop-checkout")
-                success = true
-                validatedItems = successfulItems -- update the cart to only reflect what they actually received
-                totalCost = actualCost
-            end
+                for _, item in ipairs(validatedItems) do
+                    if InventoryAddItem(src, item.name, item.qty, item.metadata, Player, nil) then
+                        table.insert(successfulItems, item)
+                        TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[item.name], "add", item.qty)
+                    else
+                        failedItems = true
+                        refundedCost = refundedCost + (item.price * item.qty)
+                        local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Missing in DB or Inventory Full). Refunded automatically."
+                        print("^1[mizu_smartshop ERROR] " .. adminWarn .. "^0")
+                        Log.Send("Shop Warning: " .. shop.name, "**Warning:** " .. adminWarn, 16711680, "Warning: " .. adminWarn)
+                    end
+                end
 
-            if failedItems then
-                TriggerClientEvent('mizu_smartshop:client:notify', src, _U('inventory_full'), 'error', shop.name)
+                local actualCost = totalCost - refundedCost
+
+                if #successfulItems > 0 then
+                    Player.Functions.RemoveMoney(paymentType, actualCost, "smartshop-checkout")
+                    success = true
+                    validatedItems = successfulItems
+                    totalCost = actualCost
+                end
+
+                if failedItems then
+                    TriggerClientEvent('mizu_smartshop:client:notify', src, _U('inventory_full'), 'error', shop.name)
+                end
             end
         else
             TriggerClientEvent('mizu_smartshop:client:notify', src, _U('not_enough_money'), 'error', shop.name)
@@ -260,9 +359,9 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
         if Player.Functions.GetMoney(paymentType) >= totalCost then
             local canCarryAll = true
             for _, item in ipairs(validatedItems) do
-                if not exports.ox_inventory:CanCarryItem(src, item.name, item.qty) then
+                if not InventoryCanCarry(src, item.name, item.qty, nil) then
                     canCarryAll = false
-                    local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Missing in DB or Inventory Full)."
+                    local adminWarn = "Failed to give item '" .. tostring(item.name) .. "' to " .. GetPlayerName(src) .. " (Inventory Full)."
                     print("^1[mizu_smartshop ERROR] " .. adminWarn .. "^0")
                     Log.Send("Shop Warning: " .. shop.name, "**Warning:** " .. adminWarn, 16711680, "Warning: " .. adminWarn)
                     break
@@ -272,7 +371,7 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
             if canCarryAll then
                 Player.Functions.RemoveMoney(paymentType, totalCost, "smartshop-checkout")
                 for _, item in ipairs(validatedItems) do
-                    exports.ox_inventory:AddItem(src, item.name, item.qty)
+                    InventoryAddItem(src, item.name, item.qty, item.metadata, Player, nil)
                 end
                 success = true
             else
