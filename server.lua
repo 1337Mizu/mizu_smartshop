@@ -850,42 +850,6 @@ RegisterNetEvent('mizu_smartshop:server:createNewShop', function(shopId)
     print('^2[mizu_smartshop] New empty shop "' .. shopId .. '" created by ' .. GetPlayerName(src) .. '^0')
 end)
 
--- Version Checker
-local function CheckVersion()
-    local currentVersion = GetResourceMetadata(GetCurrentResourceName(), 'version', 0)
-    if not currentVersion then
-        print('^3[mizu_smartshop] ⚠ Could not read current version from fxmanifest.lua^0')
-        return
-    end
-
-    PerformHttpRequest('https://api.github.com/repos/1337Mizu/mizu_smartshop/releases/latest', function(statusCode, response, headers)
-        if statusCode ~= 200 or not response then
-            print('^3[mizu_smartshop] ⚠ Could not check for updates (HTTP ' .. tostring(statusCode) .. ')^0')
-            return
-        end
-
-        local data = json.decode(response)
-        if not data or not data.tag_name then
-            print('^3[mizu_smartshop] ⚠ Could not parse update response^0')
-            return
-        end
-
-        local latestVersion = data.tag_name:gsub('^v', '')
-
-        if latestVersion == currentVersion then
-            print('^2[mizu_smartshop] ✓ Up to date (v' .. currentVersion .. ')^0')
-        else
-            print('^1[mizu_smartshop] ✗ Update available! Current: v' .. currentVersion .. ' → Latest: v' .. latestVersion .. '^0')
-            print('^1[mizu_smartshop] Download: https://github.com/1337Mizu/mizu_smartshop/releases/latest^0')
-        end
-    end, 'GET', '', { ['Content-Type'] = 'application/json', ['User-Agent'] = 'mizu_smartshop' })
-end
-
-CreateThread(function()
-    Wait(5000)
-    CheckVersion()
-end)
-
 -- /smartshopcreate <sourceShopId> [newShopId]
 -- Copies an existing shop to the player's current position
 RegisterCommand('smartshopcreate', function(source, args)

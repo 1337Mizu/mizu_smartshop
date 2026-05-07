@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'Mizu | MizuScripts'
 description 'Mizu Smartshop'
-version '1.3.3'
+version '1.3.5'
 
 shared_scripts {
     'locales/*.lua',
@@ -11,11 +11,11 @@ shared_scripts {
 }
 
 server_scripts {
-    'server_open.lua'
+    'server.lua'
 }
 
 client_scripts {
-    'client_open.lua'
+    'client.lua'
 }
 
 client_exports {
