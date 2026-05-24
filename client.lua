@@ -300,8 +300,76 @@ RegisterNUICallback('checkoutCart', function(data, cb)
 end)
 
 local PendingShopOpen = nil
+local PendingLicenseCheck = nil
+
+-- Returns a table of Config.Licenses keys the local player currently holds,
+-- e.g. { ['weaponlicense'] = true }. Returns nil for standalone (show all items).
+local function GetPlayerLicenseKeys()
+    if Framework == 'none' then return nil end
+    if not Config.Licenses then return {} end
+
+    local rawLicences = {}
+    local rawItems = {}
+    local citizenid = nil
+    if Framework == 'qbcore' then
+        local pd = QBCore.Functions.GetPlayerData()
+        rawLicences = (pd and pd.metadata and pd.metadata.licences) or {}
+        rawItems = (pd and pd.items) or {}
+        citizenid = pd and pd.citizenid
+    elseif Framework == 'qbox' then
+        local pd = exports.qbx_core:GetPlayerData()
+        rawLicences = (pd and pd.metadata and pd.metadata.licences) or {}
+        rawItems = (pd and pd.items) or {}
+        citizenid = pd and pd.citizenid
+    elseif Framework == 'esx' then
+        local pd = ESX.GetPlayerData()
+        rawLicences = (pd and pd.metadata and pd.metadata.licences) or {}
+        rawItems = (pd and pd.inventory) or {}
+
+        if pd and pd.licenses then
+            for _, lic in ipairs(pd.licenses) do
+                if lic.type then
+                    for licKey, licData in pairs(Config.Licenses) do
+                        local esxType = licData.esx_type or licData.metadata
+                        if lic.type == esxType then
+                            rawLicences[licData.metadata] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local keys = {}
+    for licKey, licData in pairs(Config.Licenses) do
+        -- check metadata licences (always authoritative)
+        if rawLicences[licData.metadata] == true then
+            keys[licKey] = true
+        end
+        -- fallback: inventory item with ownership check
+        if not keys[licKey] then
+            for _, invItem in pairs(rawItems) do
+                if invItem and invItem.name == licKey and (invItem.amount or invItem.count or 1) > 0 then
+                    local info = invItem.info or invItem.metadata or {}
+                    -- if the item has a citizenid, it must be the player's own
+                    if not citizenid or not info.citizenid or info.citizenid == citizenid then
+                        keys[licKey] = true
+                    end
+                    break
+                end
+            end
+        end
+    end
+    return keys
+end
 
 function OpenShop(shopId)
+    if not ShopsSynced then
+        TriggerServerEvent('mizu_smartshop:server:requestSavedShops')
+        TriggerEvent('mizu_smartshop:client:notify', 'Shop data is still loading, please try again in a moment.', 'error')
+        return
+    end
+
     local shop = Config.Shops[shopId]
     if not shop then return end
 
@@ -310,11 +378,25 @@ function OpenShop(shopId)
         return
     end
 
+    -- ESX: licenses live in DB, check server-side then continue async
+    if Framework == 'esx' then
+        CurrentShop = shopId
+        PendingLicenseCheck = { shopId = shopId, shop = shop }
+        TriggerServerEvent('mizu_smartshop:server:requestPlayerLicenses', shopId)
+        return
+    end
+
+    local playerLicenseKeys = GetPlayerLicenseKeys()
     local filteredItems = {}
     for _, item in ipairs(shop.items) do
         local requiredGrade = item.grade or 0
         if PlayerJob.grade >= requiredGrade then
-            table.insert(filteredItems, item)
+            -- hide items the player doesn't have the required license for
+            if item.license and playerLicenseKeys and not playerLicenseKeys[item.license] then
+                -- skip
+            else
+                table.insert(filteredItems, item)
+            end
         end
     end
 
@@ -336,6 +418,40 @@ function OpenShop(shopId)
         })
     end
 end
+
+RegisterNetEvent('mizu_smartshop:client:receivePlayerLicenses', function(shopId, licenseKeys)
+    if not PendingLicenseCheck or CurrentShop ~= shopId then return end
+    local data = PendingLicenseCheck
+    PendingLicenseCheck = nil
+
+    local shop = data.shop
+    local filteredItems = {}
+    for _, item in ipairs(shop.items) do
+        local requiredGrade = item.grade or 0
+        if PlayerJob.grade >= requiredGrade then
+            if item.license and not licenseKeys[item.license] then
+                -- skip: no license
+            else
+                table.insert(filteredItems, item)
+            end
+        end
+    end
+
+    if shop.DynamicPricing then
+        TriggerServerEvent('mizu_smartshop:server:requestDynamicPrices', shopId)
+        PendingShopOpen = { filteredItems = filteredItems, shop = shop }
+    else
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'openShop',
+            shopName = shop.name,
+            items = filteredItems,
+            dynamicPricing = false,
+            locales = Locales[Config.Locale],
+            theme = Config.Theme or 'default'
+        })
+    end
+end)
 
 RegisterNetEvent('mizu_smartshop:client:receiveDynamicPrices', function(shopId, prices)
     if not PendingShopOpen or CurrentShop ~= shopId then return end
@@ -635,6 +751,7 @@ RegisterNetEvent('mizu_smartshop:client:receiveAdminData', function(shops, image
         jobs = jobs or {},
         items = items or {},
         imagePathMap = imagePathMap or {},
+        licenses = Config.Licenses or {},
         locales = Locales[Config.Locale],
         theme = Config.Theme or 'default'
     })

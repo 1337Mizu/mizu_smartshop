@@ -104,6 +104,175 @@ local function InventoryAddItem(src, itemName, qty, metadata, player, xPlayer)
     return false
 end
 
+-- Returns true if player has the item in inventory (license item fallback)
+local function InventoryHasItem(src, itemName, player, xPlayer)
+    local inv = GetInventorySystem()
+
+    -- get player's own citizenid to verify personal items (e.g. id_card)
+    local citizenid = nil
+    if player and player.PlayerData then
+        citizenid = player.PlayerData.citizenid
+    end
+
+    if inv == 'ox_inventory' then
+        -- search all slots of this item and check ownership
+        local slots = exports.ox_inventory:Search(src, 'slots', itemName)
+        if not slots then return false end
+        for _, slot in pairs(slots) do
+            local md = slot.metadata or {}
+            -- if the item carries a citizenid, it must match the player's own
+            if not md.citizenid or md.citizenid == citizenid then
+                return true
+            end
+        end
+        return false
+
+    elseif inv == 'qs-inventory' then
+        return (exports['qs-inventory']:GetItemCount(src, itemName) or 0) > 0
+
+    elseif player and player.Functions and player.Functions.GetItemByName then
+        local item = player.Functions.GetItemByName(itemName)
+        if not item then return false end
+        -- verify citizenid on personal items
+        local info = item.info or item.metadata or {}
+        if citizenid and info.citizenid and info.citizenid ~= citizenid then
+            return false
+        end
+        return true
+
+    elseif xPlayer and xPlayer.getInventoryItem then
+        local it = xPlayer.getInventoryItem(itemName)
+        return it and it.count and it.count > 0
+    end
+    return false
+end
+
+-- Returns true if the player has the required license, or if no license is needed.
+local function HasLicense(src, licenseKey)
+    if not licenseKey or not Config.Licenses then return true end
+    local licData = Config.Licenses[licenseKey]
+    if not licData then return true end -- unknown key - don't block
+
+    local metaKey = licData.metadata
+    local esxType = licData.esx_type or metaKey
+    local metadataKeys, seenMetadataKeys = {}, {}
+    local esxTypes, seenEsxTypes = {}, {}
+    local function addCandidate(list, seen, value)
+        if not value then return end
+        local v = tostring(value)
+        if v == '' then return end
+        if seen[v] then return end
+        seen[v] = true
+        table.insert(list, v)
+    end
+
+    addCandidate(metadataKeys, seenMetadataKeys, metaKey)
+    addCandidate(metadataKeys, seenMetadataKeys, licenseKey)
+
+    if #metadataKeys == 0 then
+        table.insert(metadataKeys, metaKey)
+    end
+
+    addCandidate(esxTypes, seenEsxTypes, licData.esx_type)
+    addCandidate(esxTypes, seenEsxTypes, metaKey)
+    addCandidate(esxTypes, seenEsxTypes, licenseKey)
+
+    if #esxTypes == 0 then
+        table.insert(esxTypes, esxType)
+    end
+
+    if Framework == 'qbcore' then
+        local Player = QBCore.Functions.GetPlayer(src)
+        if not Player then return false end
+        local licences = Player.PlayerData.metadata and Player.PlayerData.metadata.licences
+        if licences then
+            for _, candidateKey in ipairs(metadataKeys) do
+                if licences[candidateKey] == true then return true end
+            end
+        end
+        -- fallback: check inventory item
+        return InventoryHasItem(src, licenseKey, Player, nil)
+
+    elseif Framework == 'qbox' then
+        local Player = exports.qbx_core:GetPlayer(src)
+        if not Player then return false end
+        local licences = Player.PlayerData.metadata and Player.PlayerData.metadata.licences
+        if licences then
+            for _, candidateKey in ipairs(metadataKeys) do
+                if licences[candidateKey] == true then return true end
+            end
+        end
+        return InventoryHasItem(src, licenseKey, Player, nil)
+
+    elseif Framework == 'esx' then
+        local xPlayer = ESX.GetPlayerFromId(src)
+        if not xPlayer then return false end
+        local licences = xPlayer.getMeta('licences')
+        if licences and type(licences) == 'table' then
+            for _, candidateType in ipairs(esxTypes) do
+                if licences[candidateType] == true then
+                    return true
+                end
+            end
+        end
+        if xPlayer.getLicense then
+            for _, candidateType in ipairs(esxTypes) do
+                if xPlayer.getLicense(candidateType) ~= nil then
+                    return true
+                end
+            end
+        end
+        -- fallback: direct DB check for setups where ESX metadata is not synced
+        local identifier = nil
+        if xPlayer.getIdentifier then
+            identifier = xPlayer.getIdentifier()
+        elseif xPlayer.identifier then
+            identifier = xPlayer.identifier
+        end
+        if identifier then
+            local baseIdentifier = identifier
+            local colonPos = identifier:find(':', 1, true)
+            if colonPos then
+                baseIdentifier = identifier:sub(colonPos + 1)
+            end
+
+            local esxTypeA = esxTypes[1] or esxType
+            local esxTypeB = esxTypes[2] or esxTypeA
+            local esxTypeC = esxTypes[3] or esxTypeB
+            local sql = 'SELECT type FROM user_licenses WHERE (type = ? OR type = ? OR type = ?) AND (owner = ? OR owner = ? OR owner LIKE ? OR owner LIKE ?) LIMIT 1'
+            local params = { esxTypeA, esxTypeB, esxTypeC, identifier, baseIdentifier, ('char%%:' .. baseIdentifier), ('%%:' .. baseIdentifier) }
+            local hasDbLicense = false
+            local hitDbType = nil
+
+            if MySQL and MySQL.scalar and MySQL.scalar.await then
+                hitDbType = MySQL.scalar.await(sql, params)
+                hasDbLicense = hitDbType ~= nil
+            elseif MySQL and MySQL.query and MySQL.query.await then
+                local rows = MySQL.query.await(sql, params) or {}
+                hasDbLicense = rows[1] ~= nil
+                hitDbType = hasDbLicense and rows[1].type or nil
+            elseif GetResourceState('oxmysql') == 'started' and exports and exports.oxmysql then
+                if exports.oxmysql.scalarSync then
+                    hitDbType = exports.oxmysql:scalarSync(sql, params)
+                    hasDbLicense = hitDbType ~= nil
+                elseif exports.oxmysql.querySync then
+                    local rows = exports.oxmysql:querySync(sql, params) or {}
+                    hasDbLicense = rows[1] ~= nil
+                    hitDbType = hasDbLicense and rows[1].type or nil
+                end
+            end
+
+            if hasDbLicense then
+                return true
+            end
+        end
+        -- fallback: check inventory item
+        return InventoryHasItem(src, licenseKey, nil, xPlayer)
+    end
+
+    return true -- standalone - no license system
+end
+
 -- Dynamic Pricing Engine
 local DynamicPrices = {} -- DynamicPrices[shopId][itemName] = currentPrice
 local DynamicLastRefresh = {} -- DynamicLastRefresh[shopId] = os.time() of last refresh
@@ -219,6 +388,8 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
 
     local totalCost = 0
     local validatedItems = {}
+    local hasLicenseFailure = false
+    local missingLicenseLabel = nil
 
     for _, cartItem in ipairs(cart) do
         local itemData = nil
@@ -232,17 +403,29 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
         if itemData and cartItem.qty and cartItem.qty > 0 then
             local reqGrade = itemData.grade or 0
             if PlayerJobGrade >= reqGrade then
-                local pQty = cartItem.qty
-                local maxQ = itemData.maxQty or 999
-                if pQty > maxQ then pQty = maxQ end
-                
-                local actualPrice = shop.DynamicPricing and GetDynamicPrice(shopId, itemData.name, itemData.price) or itemData.price
-                totalCost = totalCost + (actualPrice * pQty)
-                table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = actualPrice, metadata = itemData.metadata })
+                if not HasLicense(src, itemData.license) then
+                    hasLicenseFailure = true
+                    if not missingLicenseLabel then
+                        local licData = Config.Licenses and itemData.license and Config.Licenses[itemData.license]
+                        missingLicenseLabel = (licData and licData.label) or itemData.license
+                    end
+                else
+                    local pQty = cartItem.qty
+                    local maxQ = itemData.maxQty or 999
+                    if pQty > maxQ then pQty = maxQ end
+
+                    local actualPrice = shop.DynamicPricing and GetDynamicPrice(shopId, itemData.name, itemData.price) or itemData.price
+                    totalCost = totalCost + (actualPrice * pQty)
+                    table.insert(validatedItems, { name = itemData.name, label = itemData.label, qty = pQty, price = actualPrice, metadata = itemData.metadata, license = itemData.license })
+                end
             else
                 Log.Send("Grade Restricted", "Player " .. GetPlayerName(src) .. " tried to buy ["..itemData.name.."] but lacks grade "..tostring(reqGrade)..".", 16711680)
             end
         end
+    end
+
+    if hasLicenseFailure then
+        TriggerClientEvent('mizu_smartshop:client:notify', src, _U('no_license', missingLicenseLabel or '?'), 'error', shop.name)
     end
 
     if totalCost <= 0 or #validatedItems == 0 then return end
@@ -419,11 +602,25 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
         end
 
         local coordsTxt = string.format("%.2f, %.2f, %.2f", shop.coords.x, shop.coords.y, shop.coords.z)
+
+        -- collect which licenses were required by items in this purchase
+        local licenseLines = {}
+        local seenLicenses = {}
+        for _, it in ipairs(validatedItems) do
+            if it.license and not seenLicenses[it.license] then
+                seenLicenses[it.license] = true
+                local licData = Config.Licenses and Config.Licenses[it.license]
+                table.insert(licenseLines, (licData and licData.label) or it.license)
+            end
+        end
+        local licenseNote = #licenseLines > 0 and ("\n**License required:** " .. table.concat(licenseLines, ", ")) or ""
+        local licenseNotePlain = #licenseLines > 0 and (" | License req: " .. table.concat(licenseLines, ", ")) or ""
+
         local logMsg = string.format("**Player:** %s\n**Items:** %s\n**Payment:** %s ($%s)\n\n**Location:** %s\n**License:** %s\n**FiveM:** %s\n**Steam ID:** %s\n**Discord:** %s", 
-            GetPlayerName(src), itemList, pTypeLabel, totalCost, coordsTxt, license, fivemId, steamId, discordId)
+            GetPlayerName(src), itemList, pTypeLabel, totalCost, coordsTxt, license, fivemId, steamId, discordId) .. licenseNote
             
         local plainMsg = string.format("Player: %s | Items: %s| Payment: %s ($%s) | Loc: %s | Lic: %s | FiveM: %s | Steam: %s | DC: %s", 
-            GetPlayerName(src), itemList, pTypeLabel, totalCost, coordsTxt, license, fivemId, steamId, discordId)
+            GetPlayerName(src), itemList, pTypeLabel, totalCost, coordsTxt, license, fivemId, steamId, discordId) .. licenseNotePlain
             
         Log.Send("Shop Checkout: " .. shop.name, logMsg, 65280, plainMsg)
     end
@@ -743,6 +940,20 @@ RegisterNetEvent('mizu_smartshop:server:requestDynamicPrices', function(shopId)
         RefreshDynamicPrices(shopId)
     end
     TriggerClientEvent('mizu_smartshop:client:receiveDynamicPrices', src, shopId, DynamicPrices[shopId])
+end)
+
+RegisterNetEvent('mizu_smartshop:server:requestPlayerLicenses', function(shopId)
+    local src = source
+    local validKeys = {}
+
+    if Config.Licenses then
+        for licKey, _ in pairs(Config.Licenses) do
+            if HasLicense(src, licKey) then
+                validKeys[licKey] = true
+            end
+        end
+    end
+    TriggerClientEvent('mizu_smartshop:client:receivePlayerLicenses', src, shopId, validKeys)
 end)
 
 RegisterNetEvent('mizu_smartshop:server:requestAdminData', function()

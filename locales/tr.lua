@@ -21,4 +21,5 @@ Locales['tr'] = {
     ['pay_card'] = 'Kart',
     ['search_placeholder'] = 'Ürün ara...',
     ['category_all'] = 'Tümü',
+    ['no_license'] = 'Bu esyayi satin almak icin %s gereklidir.',
 }

@@ -21,4 +21,5 @@ Locales['es'] = {
     ['pay_card'] = 'Tarjeta',
     ['search_placeholder'] = 'Buscar artículos...',
     ['category_all'] = 'Todos',
+    ['no_license'] = 'Necesitas una %s para comprar este articulo.',
 }

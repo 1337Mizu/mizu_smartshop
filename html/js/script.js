@@ -124,6 +124,7 @@ function renderItems(items) {
             : `<div class="item-price">$${displayPrice}</div>`;
 
         card.innerHTML = `
+            ${item.license ? `<div class="item-license-badge" title="License required"><i class="fas fa-file-alt"></i></div>` : ''}
             <div class="item-img-wrapper"></div>
             <div class="item-info">
                 <div class="item-name">${item.label}</div>
@@ -393,8 +394,10 @@ let adminShops = {};
 let adminImages = [];
 let adminJobs = [];
 let adminItems = [];
+let adminLicenses = {};
 let imagePathMap = {};
 let selectedJobs = [];
+let selectedLicense = '';
 let editingShopId = null;
 let editingItemIndex = -1; // -1 = new item
 let editingShopItems = [];
@@ -409,6 +412,7 @@ window.addEventListener('message', function (event) {
         adminJobs = data.jobs || [];
         adminItems = data.items || [];
         imagePathMap = data.imagePathMap || {};
+        adminLicenses = data.licenses || {};
         currentLocales = data.locales || {};
 
         document.documentElement.setAttribute('data-theme', data.theme || 'default');
@@ -670,6 +674,7 @@ function renderAdminItems() {
         if (item.maxQty) meta += ` · Max ${item.maxQty}`;
         if (item.grade) meta += ` · Grade ${item.grade}`;
         if (item.category) meta += ` · ${item.category}`;
+        if (item.license) meta += ` · <i class="fas fa-file-alt"></i> ${item.license}`;
 
         el.innerHTML = `
             <div class="cart-item-info">
@@ -809,6 +814,53 @@ function buildShopData() {
 }
 
 // --- Job Dropdown ---
+function renderLicenseDropdown() {
+    const list = document.getElementById('item-license-list');
+    list.innerHTML = '';
+
+    const noneRow = document.createElement('div');
+    noneRow.className = 'admin-job-option' + (selectedLicense === '' ? ' selected' : '');
+    noneRow.innerHTML = '<span class="admin-job-label" style="opacity:0.5">-- none --</span>';
+    noneRow.addEventListener('click', function() {
+        selectedLicense = '';
+        updateLicensePlaceholder();
+        document.getElementById('item-license-dropdown').style.display = 'none';
+        renderLicenseDropdown();
+    });
+    list.appendChild(noneRow);
+
+    const sortedLicenses = Object.entries(adminLicenses).sort(function(a, b) {
+        const aLabel = ((a[1] && a[1].label) || a[0] || '').toString().toLowerCase();
+        const bLabel = ((b[1] && b[1].label) || b[0] || '').toString().toLowerCase();
+        return aLabel.localeCompare(bLabel);
+    });
+
+    for (const [key, lic] of sortedLicenses) {
+        const row = document.createElement('div');
+        row.className = 'admin-job-option' + (selectedLicense === key ? ' selected' : '');
+        row.innerHTML = `<span class="admin-job-label">${lic.label || key}</span>`;
+        row.addEventListener('click', function() {
+            selectedLicense = key;
+            updateLicensePlaceholder();
+            document.getElementById('item-license-dropdown').style.display = 'none';
+            renderLicenseDropdown();
+        });
+        list.appendChild(row);
+    }
+}
+
+function updateLicensePlaceholder() {
+    const el = document.getElementById('item-license-placeholder');
+    if (!selectedLicense) {
+        el.textContent = '-- none --';
+        el.style.opacity = '0.5';
+    } else {
+        const lic = adminLicenses[selectedLicense];
+        el.textContent = lic ? lic.label : selectedLicense;
+        el.style.opacity = '1';
+    }
+}
+
 function renderJobDropdown(filter = '') {
     const list = document.getElementById('admin-job-list');
     list.innerHTML = '';
@@ -857,6 +909,13 @@ function updateJobPlaceholder() {
     }
 }
 
+document.getElementById('item-license-toggle').addEventListener('click', function() {
+    const dd = document.getElementById('item-license-dropdown');
+    const isOpen = dd.style.display !== 'none';
+    dd.style.display = isOpen ? 'none' : '';
+    if (!isOpen) renderLicenseDropdown();
+});
+
 document.getElementById('admin-job-toggle').addEventListener('click', function() {
     const dd = document.getElementById('admin-job-dropdown');
     const isOpen = dd.style.display !== 'none';
@@ -872,8 +931,12 @@ document.getElementById('admin-job-search').addEventListener('input', function()
     renderJobDropdown(this.value);
 });
 
-// Close dropdown when clicking outside
+// Close dropdowns when clicking outside
 document.addEventListener('click', function(e) {
+    const licSelect = document.getElementById('item-license-select');
+    if (licSelect && !licSelect.contains(e.target)) {
+        document.getElementById('item-license-dropdown').style.display = 'none';
+    }
     const select = document.getElementById('admin-job-select');
     if (select && !select.contains(e.target)) {
         document.getElementById('admin-job-dropdown').style.display = 'none';
@@ -888,7 +951,7 @@ function openItemEditor(index) {
 
     document.getElementById('item-modal-title').textContent = isNew ? 'Add Item' : 'Edit Item';
 
-    const item = isNew ? { name: '', label: '', price: 0, image: '', maxQty: 999, grade: 0, category: '' } : editingShopItems[index];
+    const item = isNew ? { name: '', label: '', price: 0, image: '', maxQty: 999, grade: 0, category: '', license: '' } : editingShopItems[index];
 
     document.getElementById('item-edit-name').value = item.name || '';
     document.getElementById('item-edit-label').value = item.label || '';
@@ -896,6 +959,10 @@ function openItemEditor(index) {
     document.getElementById('item-edit-maxqty').value = item.maxQty || 999;
     document.getElementById('item-edit-grade').value = item.grade || 0;
     document.getElementById('item-edit-category').value = item.category || '';
+
+    selectedLicense = item.license || '';
+    renderLicenseDropdown();
+    updateLicensePlaceholder();
     document.getElementById('item-edit-image').value = item.image || '';
     updateItemImagePreview(item.image || '');
 
@@ -926,6 +993,8 @@ document.getElementById('item-edit-save').addEventListener('click', function() {
 
     const category = document.getElementById('item-edit-category').value.trim();
     if (category) item.category = category;
+
+    if (selectedLicense) item.license = selectedLicense;
 
     const minPrice = parseInt(document.getElementById('item-edit-minprice').value);
     const maxPrice = parseInt(document.getElementById('item-edit-maxprice').value);

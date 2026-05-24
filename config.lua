@@ -9,6 +9,34 @@ Config.DynamicPriceInterval = 30 -- Minutes between price updates (global defaul
 Config.WebhookURL = ''
 Config.FivemanageToken = ''
 
+-- License types that can be required on items.
+-- Set 'license' on any item in Config.Shops to the key below to restrict it.
+-- 'metadata' is the key inside player.metadata.licences (QBCore, QBox, ESX with esx_license).
+-- 'esx_type' is optional - overrides the license type name for older ESX DB lookups.
+-- Example item usage: { name = 'weapon_pistol', label = 'Pistol', price = 500, ..., license = 'weaponlicense' }
+Config.Licenses = {
+    ['weaponlicense'] = {
+        label    = 'Weapon License',
+        metadata = 'weapon',
+    },
+    ['driver_license'] = {
+        label    = 'Driver License',
+        metadata = 'driver',
+    },
+    ['id_card'] = {
+        label    = 'ID Card',
+        metadata = 'id',
+    },
+    ['hunting_license'] = {
+        label    = 'Hunting License',
+        metadata = 'hunting',
+    },
+    ['fishing_license'] = {
+        label    = 'Fishing License',
+        metadata = 'fishing',
+    },
+}
+
 Config.Shops = {
     -- 24/7 Supermarkets
     ['247_davis'] = {

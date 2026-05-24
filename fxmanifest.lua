@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'Mizu | MizuScripts'
 description 'Mizu Smartshop'
-version '1.3.5'
+version '1.4.0'
 
 shared_scripts {
     'locales/*.lua',
@@ -11,6 +11,7 @@ shared_scripts {
 }
 
 server_scripts {
+    '@oxmysql/lib/MySQL.lua',
     'server.lua'
 }
 

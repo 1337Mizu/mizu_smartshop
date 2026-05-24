@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop (v1.3.3)
+# 🛒 Mizu SmartShop (v1.4.0)
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -137,6 +137,22 @@
 - Explicitly supported inventory systems: qb-inventory (QBCore), lj-inventory (QBCore), ox_inventory (QBCore, ESX & QBox), qs-inventory (QBCore/ESX), codem-inventory (QBCore/ESX), standard ESX (metadata ignored gracefully)
 - Other inventory systems are not explicitly handled - metadata will not be passed at the moment
 - Useful for weapons with serial numbers, expiry dates, vehicle keys, licenses, custom labels and more
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+### 🔑 License System (v1.4.0)
+- Optional `license` field per item — items are **completely hidden** in the shop UI if the player doesn't hold the required license
+- Server-side validation on checkout as a second layer of protection — even if a client bypasses the UI, unlicensed items are rejected
+- Define license types once in `Config.Licenses` with a human-readable label and metadata key — reference them on any item by key
+- Supports all frameworks: QBCore & QBox check `player.metadata.licences`, ESX checks `getMeta('licences')` with a `getLicense` fallback for older setups; Standalone shows all items
+- **Inventory item fallback**: holding the license item in inventory (e.g. `id_card`) is also accepted — no metadata entry required
+- **Ownership verification**: items with a `citizenid` in their metadata are checked against the player's own — picking up another player's dropped ID card does **not** grant access; supported for ox_inventory, QBCore/QBox default inventory and ESX
+- License field available in the in-game admin panel (`/smartshopedit`) — styled custom dropdown matching the job restriction selector
+- Admin item list shows a document badge (`fa-file-alt`) next to license-restricted items; shop UI shows the same badge on item cards for players who hold the required license
+- Discord / Fivemanage logs include which licenses were required for a given purchase
 
 </td>
 </tr>
