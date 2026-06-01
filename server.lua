@@ -17,6 +17,32 @@ else
     print('^3[mizu_smartshop] No accepted framework detected, running standalone if applicable.^0')
 end
 
+local function GetShopRestriction(shop)
+    if not shop then return nil end
+    if shop.Restriction ~= nil then return shop.Restriction end
+    return shop.JobRestriction
+end
+
+local function HasRestrictionAccess(restriction, jobName, gangName)
+    if not restriction then return true end
+    if type(restriction) == 'table' then
+        for _, name in ipairs(restriction) do
+            if name == jobName or name == gangName then
+                return true
+            end
+        end
+        return false
+    end
+    return restriction == jobName or restriction == gangName
+end
+
+local function GetGradeValue(entry)
+    if not entry then return 0 end
+    local grade = entry.grade
+    if type(grade) == 'table' then return grade.level or 0 end
+    return grade or 0
+end
+
 local Log = {}
 
 function Log.Send(title, message, color, plainMsg)
@@ -349,6 +375,7 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
 
     local PlayerJobName = 'unemployed'
     local PlayerJobGrade = 0
+    local PlayerGangName = 'none'
 
     if Framework == 'esx' then
         local xPlayer = ESX.GetPlayerFromId(src)
@@ -360,30 +387,22 @@ RegisterNetEvent('mizu_smartshop:server:checkoutCart', function(shopId, cart, pa
         local Player = QBCore.Functions.GetPlayer(src)
         if Player then
             PlayerJobName = Player.PlayerData.job.name
-            PlayerJobGrade = Player.PlayerData.job.grade.level
+            PlayerJobGrade = GetGradeValue(Player.PlayerData.job)
+            PlayerGangName = Player.PlayerData.gang and Player.PlayerData.gang.name or 'none'
         end
     elseif Framework == 'qbox' then
         local Player = exports.qbx_core:GetPlayer(src)
         if Player then
             PlayerJobName = Player.PlayerData.job.name
-            PlayerJobGrade = Player.PlayerData.job.grade.level
+            PlayerJobGrade = GetGradeValue(Player.PlayerData.job)
+            PlayerGangName = Player.PlayerData.gang and Player.PlayerData.gang.name or 'none'
         end
     end
 
-    if shop.JobRestriction then
-        local hasJob = false
-        if type(shop.JobRestriction) == 'table' then
-            for _, j in ipairs(shop.JobRestriction) do
-                if PlayerJobName == j then hasJob = true; break end
-            end
-        elseif shop.JobRestriction == PlayerJobName then
-            hasJob = true
-        end
-
-        if not hasJob then
-            Log.Send("Access Denied: " .. shop.name, "Player " .. GetPlayerName(src) .. " tried to checkout at a restricted shop without the correct job.", 16711680)
+    local restriction = GetShopRestriction(shop)
+    if not HasRestrictionAccess(restriction, PlayerJobName, PlayerGangName) then
+        Log.Send("Access Denied: " .. shop.name, "Player " .. GetPlayerName(src) .. " tried to checkout at a restricted shop without the correct job/gang.", 16711680)
             return
-        end
     end
 
     local totalCost = 0
@@ -788,30 +807,63 @@ print('^2[mizu_smartshop] Scanned ' .. #AvailableImages .. ' available images.^0
 
 -- Admin Panel Events
 
-local function GetAllJobs()
-    local jobs = {}
+local function GetAllRestrictions()
+    local restrictions = {}
+    local seen = {}
+
+    local function addEntry(name, label, entryType)
+        if not name or seen[name] then return end
+        seen[name] = true
+        local suffix = entryType == 'gang' and ' (Gang)' or ' (Job)'
+        table.insert(restrictions, {
+            name = name,
+            label = (label or name) .. suffix,
+            type = entryType
+        })
+    end
+
     if Framework == 'qbcore' then
         local shared = QBCore.Shared.Jobs
         if shared then
             for name, data in pairs(shared) do
-                table.insert(jobs, { name = name, label = data.label or name })
+                addEntry(name, data.label, 'job')
+            end
+        end
+        local gangs = QBCore.Shared.Gangs
+        if gangs then
+            for name, data in pairs(gangs) do
+                addEntry(name, data.label, 'gang')
             end
         end
     elseif Framework == 'qbox' then
-        local shared = exports.qbx_core:GetJobs()
-        if shared then
-            for name, data in pairs(shared) do
-                table.insert(jobs, { name = name, label = data.label or name })
+        local jobs = exports.qbx_core:GetJobs()
+        if jobs then
+            for key, data in pairs(jobs) do
+                if type(key) == 'string' then
+                    addEntry(key, data and data.label, 'job')
+                elseif type(data) == 'table' then
+                    addEntry(data.name, data.label, 'job')
+                end
+            end
+        end
+        local gangs = exports.qbx_core:GetGangs()
+        if gangs then
+            for key, data in pairs(gangs) do
+                if type(key) == 'string' then
+                    addEntry(key, data and data.label, 'gang')
+                elseif type(data) == 'table' then
+                    addEntry(data.name, data.label, 'gang')
+                end
             end
         end
     elseif Framework == 'esx' then
         local result = MySQL and MySQL.query and MySQL.query.await('SELECT name, label FROM jobs') or {}
         for _, row in ipairs(result) do
-            table.insert(jobs, { name = row.name, label = row.label or row.name })
+            addEntry(row.name, row.label, 'job')
         end
     end
-    table.sort(jobs, function(a, b) return a.label:lower() < b.label:lower() end)
-    return jobs
+    table.sort(restrictions, function(a, b) return a.label:lower() < b.label:lower() end)
+    return restrictions
 end
 
 local function GetAllItems()
@@ -966,7 +1018,7 @@ RegisterNetEvent('mizu_smartshop:server:requestAdminData', function()
         s._isConfig = ConfigShopIds[id] or false
         shops[id] = s
     end
-    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllJobs(), GetAllItems(), ImagePathMap)
+    TriggerClientEvent('mizu_smartshop:client:receiveAdminData', src, shops, AvailableImages, GetAllRestrictions(), GetAllItems(), ImagePathMap)
 end)
 
 RegisterNetEvent('mizu_smartshop:server:saveShop', function(shopId, shopData)
@@ -1122,15 +1174,16 @@ RegisterCommand('smartshoplist', function(source, args)
         local c = shop.coords
         local coordStr = string.format('%.2f, %.2f, %.2f', c.x, c.y, c.z)
         local dynamic = shop._dynamic and ' ^5[dynamic]^0' or ''
-        local job = ''
-        if shop.JobRestriction then
-            if type(shop.JobRestriction) == 'table' then
-                job = ' ^1[job: ' .. table.concat(shop.JobRestriction, ', ') .. ']^0'
+        local restrictionText = ''
+        local restriction = GetShopRestriction(shop)
+        if restriction then
+            if type(restriction) == 'table' then
+                restrictionText = ' ^1[restriction: ' .. table.concat(restriction, ', ') .. ']^0'
             else
-                job = ' ^1[job: ' .. shop.JobRestriction .. ']^0'
+                restrictionText = ' ^1[restriction: ' .. restriction .. ']^0'
             end
         end
-        table.insert(lines, string.format('^2%s^0 (%s) — %s%s%s', shop.name or shopId, shopId, coordStr, job, dynamic))
+        table.insert(lines, string.format('^2%s^0 (%s) — %s%s%s', shop.name or shopId, shopId, coordStr, restrictionText, dynamic))
     end
 
     table.insert(lines, '^3================================================^0')

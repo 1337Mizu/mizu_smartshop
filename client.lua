@@ -1,6 +1,7 @@
 local Framework = 'none'
 local ESX, QBCore = nil, nil
 local PlayerJob = { name = 'unemployed', grade = 0 }
+local PlayerGang = { name = 'none', grade = 0 }
 local ActiveBlips = {}
 local ActivePeds = {}
 local ShopsSynced = false
@@ -27,43 +28,137 @@ local function NormalizeShopVectors(shop)
     shop.MarkerPos = nil -- deprecated, use coords
 end
 
+local function GetShopRestrictions(shop)
+    if not shop then return nil end
+    if shop.Restriction ~= nil then return shop.Restriction end
+    return shop.JobRestriction
+end
+
 function HasShopAccess(shop)
-    if not shop.JobRestriction then return true end
-    if type(shop.JobRestriction) == 'table' then
-        for _, j in ipairs(shop.JobRestriction) do
-            if PlayerJob.name == j then return true end
+    local restriction = GetShopRestrictions(shop)
+    if not restriction then return true end
+    if type(restriction) == 'table' then
+        for _, name in ipairs(restriction) do
+            if PlayerJob.name == name or PlayerGang.name == name then
+                return true
+            end
         end
         return false
-    elseif shop.JobRestriction == PlayerJob.name then
+    elseif restriction == PlayerJob.name or restriction == PlayerGang.name then
         return true
     end
     return false
 end
 
+local function IsKnownQBJob(name)
+    if not name then return false end
+    if Framework == 'qbcore' and QBCore and QBCore.Shared and QBCore.Shared.Jobs then
+        return QBCore.Shared.Jobs[name] ~= nil
+    elseif Framework == 'qbox' then
+        local jobs = exports.qbx_core:GetJobs()
+        if not jobs then return false end
+        if jobs[name] ~= nil then return true end
+        for _, data in pairs(jobs) do
+            if type(data) == 'table' and data.name == name then
+                return true
+            end
+        end
+        return false
+    end
+    return false
+end
+
+local function IsKnownQBGang(name)
+    if not name then return false end
+    if Framework == 'qbcore' and QBCore and QBCore.Shared and QBCore.Shared.Gangs then
+        return QBCore.Shared.Gangs[name] ~= nil
+    elseif Framework == 'qbox' then
+        local gangs = exports.qbx_core:GetGangs()
+        if not gangs then return false end
+        if gangs[name] ~= nil then return true end
+        for _, data in pairs(gangs) do
+            if type(data) == 'table' and data.name == name then
+                return true
+            end
+        end
+        return false
+    end
+    return false
+end
+
 local function GetQBTargetJob(shop)
-    if not shop.JobRestriction then return nil end
+    local restriction = GetShopRestrictions(shop)
+    if not restriction then return nil end
     local jobs = {}
-    if type(shop.JobRestriction) == 'table' then
-        for _, jobName in ipairs(shop.JobRestriction) do
-            jobs[jobName] = 0
+    if type(restriction) == 'table' then
+        for _, jobName in ipairs(restriction) do
+            if IsKnownQBJob(jobName) then
+                jobs[jobName] = 0
+            end
         end
     else
-        jobs[shop.JobRestriction] = 0
+        if IsKnownQBJob(restriction) then
+            jobs[restriction] = 0
+        end
     end
-    return jobs
+    if next(jobs) then return jobs end
+    return nil
+end
+
+local function GetQBTargetGang(shop)
+    local restriction = GetShopRestrictions(shop)
+    if not restriction then return nil end
+    local gangs = {}
+    if type(restriction) == 'table' then
+        for _, gangName in ipairs(restriction) do
+            if IsKnownQBGang(gangName) then
+                gangs[gangName] = 0
+            end
+        end
+    else
+        if IsKnownQBGang(restriction) then
+            gangs[restriction] = 0
+        end
+    end
+    if next(gangs) then return gangs end
+    return nil
 end
 
 local function GetOxTargetGroups(shop)
-    if not shop.JobRestriction then return nil end
+    local restriction = GetShopRestrictions(shop)
+    if not restriction then return nil end
     local groups = {}
-    if type(shop.JobRestriction) == 'table' then
-        for _, jobName in ipairs(shop.JobRestriction) do
+    if type(restriction) == 'table' then
+        for _, jobName in ipairs(restriction) do
             groups[jobName] = 0
         end
     else
-        groups[shop.JobRestriction] = 0
+        groups[restriction] = 0
     end
     return groups
+end
+
+local function GetGangGradeValue(gang)
+    if not gang then return 0 end
+    local grade = gang.grade
+    if type(grade) == 'table' then return grade.level or 0 end
+    return grade or 0
+end
+
+local function GetJobGradeValue(job)
+    if not job then return 0 end
+    local grade = job.grade
+    if type(grade) == 'table' then return grade.level or 0 end
+    return grade or 0
+end
+
+local function ApplyJobUpdate(job)
+    if not job then return end
+    PlayerJob = { name = job.name or 'unemployed', grade = GetJobGradeValue(job) }
+end
+
+local function ApplyGangUpdate(gang)
+    PlayerGang = { name = (gang and gang.name) or 'none', grade = GetGangGradeValue(gang) }
 end
 
 function RefreshBlips()
@@ -98,7 +193,7 @@ function RefreshBlips()
             end
         end
     end
-    -- Also refresh peds when job changes
+    -- Also refresh peds when access restrictions change
     if RefreshShopPeds then RefreshShopPeds() end
 end
 
@@ -123,6 +218,7 @@ if GetResourceState('es_extended') == 'started' then
     CreateThread(function()
         while ESX.GetPlayerData().job == nil do Wait(100) end
         PlayerJob = { name = ESX.GetPlayerData().job.name, grade = ESX.GetPlayerData().job.grade }
+        PlayerGang = { name = 'none', grade = 0 }
         SyncAndRefresh()
     end)
     RegisterNetEvent('esx:setJob', function(job)
@@ -133,12 +229,26 @@ elseif GetResourceState('qbx_core') == 'started' then
     Framework = 'qbox'
     CreateThread(function()
         while exports.qbx_core:GetPlayerData().job == nil do Wait(100) end
-        local job = exports.qbx_core:GetPlayerData().job
-        PlayerJob = { name = job.name, grade = job.grade.level }
+        local pd = exports.qbx_core:GetPlayerData()
+        ApplyJobUpdate(pd.job)
+        ApplyGangUpdate(pd.gang)
         SyncAndRefresh()
     end)
     RegisterNetEvent('QBCore:Client:OnJobUpdate', function(job)
-        PlayerJob = { name = job.name, grade = job.grade.level }
+        ApplyJobUpdate(job)
+        RefreshBlips()
+    end)
+    RegisterNetEvent('QBCore:Client:OnGangUpdate', function(gang)
+        ApplyGangUpdate(gang)
+        RefreshBlips()
+    end)
+    -- QBOX native events (kept in addition to QBCore compatibility events)
+    RegisterNetEvent('qbx_core:client:onJobUpdate', function(job)
+        ApplyJobUpdate(job)
+        RefreshBlips()
+    end)
+    RegisterNetEvent('qbx_core:client:onGangUpdate', function(gang)
+        ApplyGangUpdate(gang)
         RefreshBlips()
     end)
 elseif GetResourceState('qb-core') == 'started' then
@@ -146,12 +256,17 @@ elseif GetResourceState('qb-core') == 'started' then
     QBCore = exports['qb-core']:GetCoreObject()
     CreateThread(function()
         while QBCore.Functions.GetPlayerData().job == nil do Wait(100) end
-        local job = QBCore.Functions.GetPlayerData().job
-        PlayerJob = { name = job.name, grade = job.grade.level }
+        local pd = QBCore.Functions.GetPlayerData()
+        ApplyJobUpdate(pd.job)
+        ApplyGangUpdate(pd.gang)
         SyncAndRefresh()
     end)
     RegisterNetEvent('QBCore:Client:OnJobUpdate', function(job)
-        PlayerJob = { name = job.name, grade = job.grade.level }
+        ApplyJobUpdate(job)
+        RefreshBlips()
+    end)
+    RegisterNetEvent('QBCore:Client:OnGangUpdate', function(gang)
+        ApplyGangUpdate(gang)
         RefreshBlips()
     end)
 else
@@ -166,18 +281,28 @@ CreateThread(function()
     while true do
         Wait(5000)
         local newJob = nil
+        local newGang = nil
         if Framework == 'qbcore' then
             local pd = QBCore.Functions.GetPlayerData()
-            if pd and pd.job then newJob = { name = pd.job.name, grade = pd.job.grade.level } end
+            if pd and pd.job then newJob = { name = pd.job.name, grade = GetJobGradeValue(pd.job) } end
+            if pd and pd.gang then
+                newGang = { name = pd.gang.name, grade = GetGangGradeValue(pd.gang) }
+            end
         elseif Framework == 'qbox' then
             local pd = exports.qbx_core:GetPlayerData()
-            if pd and pd.job then newJob = { name = pd.job.name, grade = pd.job.grade.level } end
+            if pd and pd.job then newJob = { name = pd.job.name, grade = GetJobGradeValue(pd.job) } end
+            if pd and pd.gang then
+                newGang = { name = pd.gang.name, grade = GetGangGradeValue(pd.gang) }
+            end
         elseif Framework == 'esx' then
             local pd = ESX.GetPlayerData()
             if pd and pd.job then newJob = { name = pd.job.name, grade = pd.job.grade } end
+            newGang = { name = 'none', grade = 0 }
         end
-        if newJob and (newJob.name ~= PlayerJob.name or newJob.grade ~= PlayerJob.grade) then
+        if not newGang then newGang = { name = 'none', grade = 0 } end
+        if newJob and (newJob.name ~= PlayerJob.name or newJob.grade ~= PlayerJob.grade or newGang.name ~= PlayerGang.name or newGang.grade ~= PlayerGang.grade) then
             PlayerJob = newJob
+            PlayerGang = newGang
             RefreshBlips()
         end
     end
@@ -236,6 +361,7 @@ function SpawnShopPed(shopId, shop)
                         icon = "fas fa-shopping-cart",
                         label = _U('target_open_shop'),
                         job = GetQBTargetJob(shop),
+                        gang = GetQBTargetGang(shop),
                     },
                 },
                 distance = 2.5
@@ -386,17 +512,11 @@ function OpenShop(shopId)
         return
     end
 
-    local playerLicenseKeys = GetPlayerLicenseKeys()
     local filteredItems = {}
     for _, item in ipairs(shop.items) do
         local requiredGrade = item.grade or 0
         if PlayerJob.grade >= requiredGrade then
-            -- hide items the player doesn't have the required license for
-            if item.license and playerLicenseKeys and not playerLicenseKeys[item.license] then
-                -- skip
-            else
-                table.insert(filteredItems, item)
-            end
+            table.insert(filteredItems, item)
         end
     end
 
@@ -429,11 +549,7 @@ RegisterNetEvent('mizu_smartshop:client:receivePlayerLicenses', function(shopId,
     for _, item in ipairs(shop.items) do
         local requiredGrade = item.grade or 0
         if PlayerJob.grade >= requiredGrade then
-            if item.license and not licenseKeys[item.license] then
-                -- skip: no license
-            else
-                table.insert(filteredItems, item)
-            end
+            table.insert(filteredItems, item)
         end
     end
 
@@ -580,6 +696,7 @@ CreateThread(function()
                             icon = "fas fa-shopping-cart",
                             label = _U('target_open_shop'),
                             job = GetQBTargetJob(shop),
+                            gang = GetQBTargetGang(shop),
                         },
                     },
                     distance = 2.0
@@ -690,6 +807,7 @@ RegisterNetEvent('mizu_smartshop:client:registerShop', function(shopId, shop)
                         icon = "fas fa-shopping-cart",
                         label = _U('target_open_shop'),
                         job = GetQBTargetJob(shop),
+                        gang = GetQBTargetGang(shop),
                     },
                 },
                 distance = 2.0

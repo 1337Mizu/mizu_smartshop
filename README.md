@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop (v1.4.0)
+# 🛒 Mizu SmartShop (v1.4.1)
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -47,10 +47,10 @@
 <td width="50%">
 
 ### 🔒 Access Control
-- Job-restricted shops (e.g. Police Armory)
+- Job- and gang-restricted shops (e.g. Police Armory / gang stash)
 - Grade-locked items (minimum job rank)
-- Multi-job support per shop
-- Automatic blip updates on job change
+- Multi-job and multi-gang support per shop
+- Automatic blip updates on job/gang change
 
 </td>
 <td width="50%">

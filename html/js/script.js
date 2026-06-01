@@ -486,8 +486,9 @@ function renderAdminShops(shops) {
         else if (isConfig) badge = '<span class="admin-badge admin-badge-config">config</span>';
 
         let jobText = '';
-        if (shop.JobRestriction) {
-            const jobs = Array.isArray(shop.JobRestriction) ? shop.JobRestriction.join(', ') : shop.JobRestriction;
+        const restriction = shop.Restriction ?? shop.JobRestriction;
+        if (restriction) {
+            const jobs = Array.isArray(restriction) ? restriction.join(', ') : restriction;
             jobText = `<div class="admin-shop-jobs"><i class="fas fa-lock"></i> ${jobs}</div>`;
         }
 
@@ -589,8 +590,8 @@ function openShopEditor(shopId) {
     document.getElementById('admin-shop-id').value = shopId;
     document.getElementById('admin-shop-name').value = shop.name || '';
 
-    // Job restriction dropdown
-    const jobRestriction = shop.JobRestriction;
+    // Restriction dropdown (jobs/gangs)
+    const jobRestriction = shop.Restriction ?? shop.JobRestriction;
     if (jobRestriction) {
         selectedJobs = Array.isArray(jobRestriction) ? [...jobRestriction] : [jobRestriction];
     } else {
@@ -778,7 +779,7 @@ function buildShopData() {
         items: editingShopItems
     };
 
-    if (jobRestriction) data.JobRestriction = jobRestriction;
+    if (jobRestriction) data.Restriction = jobRestriction;
     if (blipName) {
         data.Blipname = blipName;
         data.BlipSprite = parseInt(document.getElementById('admin-blip-sprite').value) || 52;
@@ -869,7 +870,7 @@ function renderJobDropdown(filter = '') {
         j.name.toLowerCase().includes(term) || j.label.toLowerCase().includes(term)
     );
     if (filtered.length === 0) {
-        list.innerHTML = '<div class="admin-job-empty">No jobs found</div>';
+        list.innerHTML = '<div class="admin-job-empty">No restrictions found</div>';
         return;
     }
     for (const job of filtered) {
