@@ -700,6 +700,35 @@ local function DeepCopy(orig)
     return copy
 end
 
+local function DistanceBetweenShops(a, b)
+    if not a or not b or not a.coords or not b.coords then return nil end
+    local dx = (a.coords.x or 0.0) - (b.coords.x or 0.0)
+    local dy = (a.coords.y or 0.0) - (b.coords.y or 0.0)
+    local dz = (a.coords.z or 0.0) - (b.coords.z or 0.0)
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+local function FindOverlappingShopId(shopId, shop)
+    -- Very small tolerance: catches accidental duplicates at the same spot
+    local overlapRadius = 0.6
+    for existingId, existingShop in pairs(Config.Shops) do
+        if existingId ~= shopId then
+            local dist = DistanceBetweenShops(shop, existingShop)
+            if dist and dist <= overlapRadius then
+                local pedA = tostring(shop.PedModel or '')
+                local pedB = tostring(existingShop.PedModel or '')
+                local blipA = tostring(shop.Blipname or '')
+                local blipB = tostring(existingShop.Blipname or '')
+                -- Require at least one strong similarity to avoid false positives.
+                if (pedA ~= '' and pedA == pedB) or (blipA ~= '' and blipA == blipB) then
+                    return existingId, dist
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
 local function LoadSavedShops()
     local raw = LoadResourceFile(GetCurrentResourceName(), 'saved_shops.json')
     if not raw or raw == '' then return end
@@ -707,12 +736,18 @@ local function LoadSavedShops()
     local saved = json.decode(raw)
     if not saved then return end
 
-    local overrideCount, dynamicCount = 0, 0
+    local overrideCount, dynamicCount, skippedDuplicates = 0, 0, 0
     for id, shop in pairs(saved) do
         shop = DeserializeVectors(shop)
         if shop._dynamic then
-            Config.Shops[id] = shop
-            dynamicCount = dynamicCount + 1
+            local overlapId, overlapDist = FindOverlappingShopId(id, shop)
+            if overlapId then
+                skippedDuplicates = skippedDuplicates + 1
+                print(string.format('^3[mizu_smartshop] Skipped duplicate saved shop "%s" (overlaps "%s", dist=%.2f)^0', id, overlapId, overlapDist))
+            else
+                Config.Shops[id] = shop
+                dynamicCount = dynamicCount + 1
+            end
         elseif shop._override and ConfigShopIds[id] then
             for k, v in pairs(shop) do
                 if k ~= '_override' then
@@ -723,7 +758,7 @@ local function LoadSavedShops()
             overrideCount = overrideCount + 1
         end
     end
-    print('^2[mizu_smartshop] Loaded ' .. dynamicCount .. ' dynamic shop(s) and ' .. overrideCount .. ' override(s) from saved_shops.json^0')
+    print('^2[mizu_smartshop] Loaded ' .. dynamicCount .. ' dynamic shop(s), ' .. overrideCount .. ' override(s), skipped ' .. skippedDuplicates .. ' duplicate(s) from saved_shops.json^0')
 end
 
 local function SaveAllShops()
