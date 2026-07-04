@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛒 Mizu SmartShop (v1.4.1)
+# 🛒 Mizu SmartShop (v1.4.3)
 
 ### Smart, Sleek & Fully Configurable Shop System for FiveM
 
@@ -153,6 +153,26 @@
 - License field available in the in-game admin panel (`/smartshopedit`) — styled custom dropdown matching the job restriction selector
 - Admin item list shows a document badge (`fa-file-alt`) next to license-restricted items; shop UI shows the same badge on item cards for players who hold the required license
 - Discord / Fivemanage logs include which licenses were required for a given purchase
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+### 🧍 Duplicate NPC Prevention (v1.4.2)
+- Saved shops that overlap an existing shop at (nearly) the same position with the same ped model or blip name are skipped on startup
+- Prevents stacked duplicate SmartShop NPCs after cloning shops via `/smartshopcreate`
+- Skipped duplicates are reported in the server console on resource start
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+### 🛟 Save Failure Logging (v1.4.3)
+- Every save to `saved_shops.json` now logs its result to the server console
+- Success prints the number of saved shops and the full file path — easy to verify via FTP
+- Failed writes (e.g. missing file/folder write permissions on hosted servers) print a clear `SAVE FAILED` error instead of failing silently
 
 </td>
 </tr>

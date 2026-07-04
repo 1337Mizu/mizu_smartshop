@@ -763,12 +763,19 @@ end
 
 local function SaveAllShops()
     local data = {}
+    local count = 0
     for id, shop in pairs(Config.Shops) do
         if shop._dynamic or shop._override then
             data[id] = SerializeShop(shop)
+            count = count + 1
         end
     end
-    SaveResourceFile(GetCurrentResourceName(), 'saved_shops.json', json.encode(data), -1)
+    local ok = SaveResourceFile(GetCurrentResourceName(), 'saved_shops.json', json.encode(data), -1)
+    if ok then
+        print('^2[mizu_smartshop] Saved ' .. count .. ' shop(s) to ' .. GetResourcePath(GetCurrentResourceName()) .. '/saved_shops.json^0')
+    else
+        print('^1[mizu_smartshop] SAVE FAILED: could not write saved_shops.json in ' .. tostring(GetResourcePath(GetCurrentResourceName())) .. ' - check file/folder write permissions!^0')
+    end
 end
 
 LoadSavedShops()
